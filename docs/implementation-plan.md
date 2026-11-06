@@ -17,6 +17,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 | URL state | Not needed. |
 | Deployment | Two containers (static web server + updater) with a shared volume. No Coolify-specific features. |
 | Politeness | Rate-limited, conditional requests, request cache, recorded fixtures for development. User-Agent points to the public GitHub repo URL, never a personal email. |
+| Security | Provider data is untrusted: URLs and crawl links are checked against a provider host allowlist, and cache files are named by hash. The web server can reach only published releases, sends a CSP, and is reachable only through the proxy. Images are pinned and checksum-verified. |
 | Deferred features | "What covers this point?" lookup, cross-provider compare view, pre-merged OSM-FR extracts, PMTiles. |
 
 ## Architecture
@@ -30,15 +31,17 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │        → write release → swap link     serves /data/ from volume   │
 │                │                               ▲                   │
 │                ▼                               │                   │
-│        ┌──────────────── data volume ──────────┘                   │
+│        ├──────────────── data volume ──────────┘                   │
 │        │  releases/<timestamp>/…                                    │
 │        │  current → releases/<timestamp>   (atomic symlink swap)   │
-│        │  cache/  (HTTP cache: bodies + ETag/Last-Modified)        │
-│        └───────────────────────────────────────────                │
+│        │                                                            │
+│        └──────────────── cache volume (updater only) ──            │
+│           HTTP cache: bodies + ETag/Last-Modified                  │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
 - The app is built once into the `web` image. Data updates never require a rebuild or redeploy.
+- The HTTP cache lives in its own volume that only the updater mounts, so the web server can only ever reach published releases.
 - The browser loads the app shell, then fetches `/data/current/meta.json` and the data files it references.
 
 ## Repository layout
@@ -161,7 +164,9 @@ All network access goes through one client:
 
 - **Rate limit:** one request at a time with a minimum gap between requests (default 1s, configurable via `REQUEST_INTERVAL_MS`).
 - **User-Agent:** `osm-extract-map/<version> (+https://github.com/tallcoleman/osm-extract-map)`.
-- **Conditional requests:** stores `ETag`/`Last-Modified` per URL in `cache/` and sends `If-None-Match`/`If-Modified-Since`. A `304` returns the cached body.
+- **Conditional requests:** stores `ETag`/`Last-Modified` per URL in the cache and sends `If-None-Match`/`If-Modified-Since`. A `304` returns the cached body.
+- **Cache file names:** each entry is named by a SHA-256 hash of the full URL, never by the URL path, so a crafted URL (`../`, `%2e%2e/`) can't write outside the cache directory.
+- **Host allowlist:** every request, including each redirect target, must be `https:` on an allowlisted provider host (`download.geofabrik.de`, `download.openstreetmap.fr`). Anything else is refused and logged. Redirects are followed manually, up to 5 hops.
 - **HEAD support** for size checks, with responses cached the same way.
 - **Retries:** limited retries with exponential backoff on 5xx/network errors. Honours `Retry-After` on 429/503. Never retries 4xx.
 - **Modes:** `online` (default), `offline` (serve from cache only, fail on a miss; used in development) and `record` (online, and always write to the cache).
@@ -171,7 +176,7 @@ All network access goes through one client:
 
 1. Conditional GET of `https://download.geofabrik.de/index-v1.json`. One request; a `304` means the boundaries are unchanged.
 2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Geometry comes from the feature itself. The page URL is derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`).
-3. Sizes: HEAD each `urls.pbf` and read `Content-Length`. There are roughly 500+ requests; at 1/s that's under 10 minutes. Sizes are refreshed on every scheduled run, since they change daily. Follow redirects if HEAD returns one.
+3. Sizes: HEAD each `urls.pbf` and read `Content-Length`. There are roughly 500+ requests; at 1/s that's under 10 minutes. Sizes are refreshed on every scheduled run, since they change daily. Follow redirects if HEAD returns one, within the HTTP client's host allowlist and hop limit.
 4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Phase 0 checks this by reading a sample of `state.txt` files.
 
 ### Replication status (both providers)
@@ -184,7 +189,7 @@ After each provider is mapped, set `replication.status` for every extract:
 
 ### OSM-FR (`updater/providers/osmfr.ts`)
 
-1. Crawl the `extracts/` tree via nginx autoindex listings, one GET per directory with conditional requests. Collect `*.osm.pbf` entries (name, size, mtime).
+1. Crawl the `extracts/` tree via nginx autoindex listings, one GET per directory with conditional requests. Collect `*.osm.pbf` entries (name, size, mtime). Listing `href`s are untrusted: resolve each against the current directory URL, then follow it only if it stays on the same origin and under the expected prefix (`/extracts/`, `/polygons/` or `/replication/`) and has no `..` segments after decoding. Skip and log anything else.
 2. Crawl `replication/` the same way and record which extract paths have `minute/`, `hour/` and `day/` subdirectories containing `state.txt`.
 3. For each extract, derive the matching `polygons/<path>.poly` URL. Fetch it only if its `Last-Modified` (from the `polygons/` listing) is newer than the cached copy.
 4. Apply `config/osmfr-exclude.json`. During phase 0, check whether pre-merged extracts can be detected from naming or structure instead.
@@ -212,6 +217,7 @@ The new release is published only if all of these pass:
 - Each provider's extract count is above 0 and hasn't dropped more than 10% from the previous release.
 - Every extract has a geometry, and each geometry is parseable with a non-empty bounding box.
 - Every `parentKey` resolves to an existing extract.
+- Every URL in `urls` (and `homepage`) parses with `new URL()`, uses `https:`, and points to an allowlisted provider host. Provider data is untrusted, so this stops a `javascript:` or off-site URL from being published as a link. A failing extract is dropped and logged; if more than 10% of a provider's extracts fail, the provider fails validation.
 - `meta.json` matches the schema version.
 
 If one provider fails to fetch, reuse its data from the previous release and mark it `status: "stale"` in `meta.json`. If validation fails, keep the current release, log the reason and exit non-zero.
@@ -239,6 +245,9 @@ Vite + React + TypeScript + `react-map-gl/maplibre`. No state library; React sta
 
 At container start, `web-entrypoint.sh` writes `config.json` (`{ "maptilerKey": "…" }`) from the `MAPTILER_KEY` env var. The app fetches it on load. The key can then change without rebuilding the image. In development, Vite serves a local `config.json` that is gitignored.
 
+- The entrypoint builds the JSON with `jq -n --arg k "$MAPTILER_KEY" '{maptilerKey: $k}'`, not string interpolation, so the value is always escaped correctly.
+- The key is public by design: every visitor can read it. In the MapTiler dashboard, restrict the production key to the production origin, and use a separate key for development restricted to `localhost`.
+
 ### Map layers
 
 For each provider: a GeoJSON source, a line layer, a fill layer for hover/selection, and a line layer for the selected outline.
@@ -258,7 +267,7 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 - **Search box:** filters the visible extracts by name.
 - **Extract list:** visible extracts sorted by name or size. This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
 - **Selection panel:**
-  - Selected extracts, each with provider, size, replication badge, a link to the provider page, and copy buttons for `.pbf`, `.poly` and the replication base URL.
+  - Selected extracts, each with provider, size, replication badge, a link to the provider page, and copy buttons for `.pbf`, `.poly` and the replication base URL. Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
   - Total estimated download size, broken down by provider.
   - A "Clear" button.
 - **Footer:** last updated time from `meta.json`, a stale-data notice if any provider is `stale`, an about/attribution link, and a GitHub link.
@@ -293,9 +302,10 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 
 ### `web` container
 
-- Multi-stage Dockerfile: a Node stage installs with `npm ci` and builds the Vite app, then copies `dist/` into `nginx:alpine`.
+- Multi-stage Dockerfile: a Node stage installs with `npm ci` and builds the Vite app, then copies `dist/` into `nginx:alpine`. The final stage also installs `jq` for the entrypoint.
 - nginx config:
-  - The data volume is mounted read-only. `/data/` serves `current/` from it.
+  - The data volume is mounted read-only. `/data/` serves `current/` from it, written as `location /data/ { alias /srv/data/current/; }` with a trailing slash on both. Without both slashes, a request such as `/data../` can reach the parent directory. `autoindex` stays off.
+  - Security headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a Content Security Policy that allows only what MapLibre and MapTiler need, starting from `default-src 'self'; connect-src 'self' https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; worker-src blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. Adjust it in phase 3 if the chosen basemap style loads from other MapTiler hosts.
   - Hashed app assets: `Cache-Control: public, max-age=31536000, immutable`.
   - `index.html`, `config.json` and `/data/*`: `Cache-Control: no-cache` (revalidate with ETag).
   - `gzip on` for `application/json`, `application/geo+json` and JS/CSS. GeoJSON compresses very well.
@@ -306,7 +316,16 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - `node:22-alpine` plus `supercronic`, with dependencies installed via `npm ci`.
 - `CRON_SCHEDULE` env var (default weekly, e.g. `0 3 * * 1`).
 - On start: if `current` doesn't exist, run once immediately so a fresh deploy isn't empty.
-- The data volume is mounted read-write.
+- The data volume and the cache volume are mounted read-write.
+- Runs as the image's non-root `node` user; both volumes are owned by it.
+
+### Supply chain and image hardening (both images)
+
+- Pin base images (`node`, `nginx`) by digest, with the tag kept alongside in a comment for readability. Update them deliberately.
+- Download `supercronic` from a pinned release and check it against the SHA1 checksum published with that release. The build fails on a mismatch.
+- The updater's runtime stage installs with `npm ci --omit=dev`, so test and build tools never ship in the image. Try `--ignore-scripts` in every `npm ci`; keep it wherever the build still works.
+- The shared `test` stage is never the final stage of either Dockerfile.
+- Commit `package-lock.json` and review its diff when dependencies change.
 
 ### Manual update
 
@@ -314,8 +333,8 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 
 ### `compose.yaml`
 
-- Two services and one named volume (`data`).
-- `web` exposes port 80 only. TLS and the domain are handled by whatever reverse proxy sits in front (Coolify's proxy in production).
+- Two services and two named volumes: `data` (releases, shared) and `cache` (updater only).
+- `web` uses `expose: ["80"]`, not `ports`, so it isn't published on the host and is only reachable through the reverse proxy. TLS and the domain are handled by that proxy (Coolify's in production). For local testing, a `compose.override.yaml` can add a `ports` mapping bound to `127.0.0.1`.
 - Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE` and `REQUEST_INTERVAL_MS` (updater).
 
 ## Testing
@@ -345,13 +364,15 @@ Coverage thresholds are set to 100% for `updater/**` and `shared/**`. Only two t
   - retries with backoff on 5xx and network errors, giving up after the limit;
   - `Retry-After` honoured (both seconds and HTTP-date forms); no retry on 4xx;
   - offline mode fails on a cache miss; record mode writes to the cache;
-  - HEAD with redirects; a missing `Content-Length` gives `sizeBytes: null`.
+  - HEAD with redirects; a missing `Content-Length` gives `sizeBytes: null`;
+  - requests and redirects to a non-allowlisted host or to `http:` are refused; more than 5 redirects fail;
+  - cache file names are hashes, and URLs containing `../` or `%2e%2e/` never create files outside the cache directory.
 - **`.poly` parser:**
   - committed real-world fixtures;
   - multiple outer rings, holes assigned to the correct outer ring, scientific notation, longitudes beyond ±180, ring closing and winding order;
   - malformed input (missing `END`, non-numeric coordinates, empty file) gives a clear error.
   - A property-based round-trip test (`fast-check`): generate a polygon, write it as `.poly`, parse it, and compare.
-- **Listing parser:** recorded nginx autoindex HTML; files vs. directories; sizes and dates; unexpected HTML gives a clear error, never a silently empty result.
+- **Listing parser:** recorded nginx autoindex HTML; files vs. directories; sizes and dates; unexpected HTML gives a clear error, never a silently empty result; absolute, off-origin, out-of-prefix and `..` hrefs are skipped and logged.
 - **Providers:**
   - mapping from fixture data to `Extract` records, including derived page and `.poly` URLs;
   - exclude list applied; parent/child links;
@@ -359,7 +380,7 @@ Coverage thresholds are set to 100% for `updater/**` and `shared/**`. Only two t
   - replication intervals detected from listings.
 - **Replication status:** table-driven tests for `expected` / `differs` / `none`, including "expected interval plus others".
 - **Levels:** depth and leaf computation; overrides applied; an override pointing to a missing key is an error.
-- **Validation:** each rule passes and fails on its own; one provider failing reuses the previous data marked `stale`; both failing keeps the current release.
+- **Validation:** each rule passes and fails on its own, including `javascript:`, `data:`, `http:` and off-host URLs being rejected; one provider failing reuses the previous data marked `stale`; both failing keeps the current release.
 - **Release:** runs against a real temporary directory. Covers writing, the atomic symlink swap, pruning to 3 releases, and a failure mid-write leaving `current` untouched.
 - **Pipeline:** `runUpdate()` in offline mode over the committed fixture subset produces output that matches committed golden files (`fixtures/expected/`). Output changes then show up as a reviewable diff.
 
@@ -372,6 +393,7 @@ MapLibre needs WebGL, which jsdom doesn't have. So map behaviour is split into t
   - the selection reducer, size totals and size formatting;
   - badge text from `replication.status`;
   - search and sorting;
+  - `safeHref()`: allowlisted `https:` URLs pass, and `javascript:`, `data:`, `http:` and off-host URLs render no link;
   - the list of candidates for the overlap picker;
   - loading data/config, including error and stale states.
 - **The map component:** `react-map-gl` is mocked. Tests check that the right sources, layers, filters and event handlers are passed in, and that a mocked click with several features opens the overlap picker. Real rendering is checked by hand (see the checklist below).
@@ -395,6 +417,10 @@ Run before the first deploy and after major frontend changes:
 - [ ] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
 - [ ] Performance is still acceptable with both providers at leaf level.
+- [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
+- [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
+- [ ] `web` isn't reachable on the host's public IP, only through the proxy.
+- [ ] The production MapTiler key is restricted to the production origin.
 
 ### Keeping fixtures honest
 
@@ -407,7 +433,7 @@ Tests use recorded data, so they keep passing even if a provider changes its for
 
 - `npm test`: all tests. `npm run test:coverage`: with coverage thresholds. `npm run check`: type check and lint.
 - **Docker build:** both Dockerfiles start from a shared `test` stage that runs `npm run check` and `npm run test:coverage`. A failing test blocks the image build, so nothing broken gets deployed. This needs no outside CI service.
-- **Optional:** a GitHub Actions workflow running the same commands on pull requests, for earlier feedback. It isn't needed for deployment.
+- **Optional:** a GitHub Actions workflow running the same commands on pull requests, for earlier feedback. It isn't needed for deployment. If added, it triggers on `pull_request` (never `pull_request_target`), sets `permissions: contents: read`, and pins third-party actions by commit SHA.
 
 ## Phases
 
@@ -466,7 +492,8 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 
 ### Phase 4: deployment
 
-- Dockerfiles (with the shared `test` stage), nginx config, entrypoint, compose, supercronic, first-run behaviour and the manual update command.
+- Dockerfiles (with the shared `test` stage, pinned base images, checksum-verified supercronic and a non-root updater), nginx config (with the security headers and CSP), entrypoint, compose (with `expose` and the separate cache volume), first-run behaviour and the manual update command.
+- Restrict the MapTiler keys by origin.
 - Run the release checklist before the first deploy.
 - One full online run (including the size HEADs) from a local `docker compose up`, checking the request log for request counts and pacing.
 - Deploy to Coolify as a standard compose project.
