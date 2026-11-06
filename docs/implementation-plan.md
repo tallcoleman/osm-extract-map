@@ -4,21 +4,22 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 
 ## Decisions carried forward
 
-| Topic | Decision |
-| --- | --- |
-| Level filter | Levels are derived from tree depth. The default view is "smallest available" (leaf extracts). When a branch has no extract at the selected depth, the deepest available ancestor-level leaf is shown with a distinct "coarser" style. Depth logic is validated in an exploration phase and may get manual overrides. |
-| Download sizes | Geofabrik: HEAD request per `.osm.pbf` (`Content-Length`). OSM-FR: sizes parsed from nginx directory listings. |
-| Overlap in size totals | Not specially handled, since only one depth level is shown at a time. |
-| Geometry format | Full-detail GeoJSON first. PMTiles only if performance testing shows a problem. |
-| Change file frequency | Each provider has an expected default interval (OSM-FR: minutely, Geofabrik: daily, both to be confirmed in phase 0). Extracts are flagged only when they differ from their provider's default or have no change files at all. |
-| URLs | Provider pages are the primary link. Key URLs (page, `.pbf`, `.poly`, replication base) are shown with copy buttons. The site helps people explore what providers offer; it does not replace their download pages. |
-| OSM-FR scope | Everything in `extracts/`, matched with `polygons/` and `replication/`. Pre-merged extracts are excluded via a manual list unless they can be detected from structure. Whether to show them is revisited at the end. |
-| Data schema | Provider-agnostic, so other providers can be added later. |
-| URL state | Not needed. |
-| Deployment | Two containers (static web server + updater) with a shared volume. No Coolify-specific features. |
-| Politeness | Rate-limited, conditional requests, request cache, recorded fixtures for development. User-Agent points to the public GitHub repo URL, never a personal email. |
-| Security | Provider data is untrusted: URLs and crawl links are checked against a provider host allowlist, and cache files are named by hash. The web server can reach only published releases, sends a CSP, and is reachable only through the proxy. Images are pinned and checksum-verified. |
-| Deferred features | "What covers this point?" lookup, cross-provider compare view, pre-merged OSM-FR extracts, PMTiles. |
+| Topic                  | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Level filter           | Levels are derived from tree depth. The default view is "smallest available" (leaf extracts). When a branch has no extract at the selected depth, the deepest available ancestor-level leaf is shown with a distinct "coarser" style. Depth logic is validated in an exploration phase and may get manual overrides.                                                                                                                                                                                                                                                                                                                                                                |
+| Download sizes         | Geofabrik: sizes parsed from each parent region's HTML page (rounded, e.g. "1.2 GB"), about 32 pages. HEAD requests on `.osm.pbf` were dropped because Geofabrik's robots.txt disallows `*.osm.pbf`. OSM-FR: sizes parsed from nginx directory listings (also rounded, e.g. `311M`). Sizes are estimates either way.                                                                                                                                                                                                                                                                                                                                                                |
+| Overlap in size totals | Not specially handled, since only one depth level is shown at a time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Geometry format        | Full-detail GeoJSON first. PMTiles only if performance testing shows a problem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Change file frequency  | Each provider has an expected default interval (OSM-FR: minutely, Geofabrik: daily, both to be confirmed in phase 0). Extracts are flagged only when they differ from their provider's default or have no change files at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| URLs                   | Provider pages are the primary link. Key URLs (page, `.pbf`, `.poly`, replication base) are shown with copy buttons. The site helps people explore what providers offer; it does not replace their download pages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| OSM-FR scope           | Everything in `extracts/`, matched with `polygons/` and `replication/`. Pre-merged extracts are excluded via a manual list unless they can be detected from structure. Whether to show them is revisited at the end.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Data schema            | Provider-agnostic, so other providers can be added later.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Update schedule        | Geofabrik is refreshed weekly by the scheduled job. OSM-FR is refreshed only when manually triggered, never on a schedule, since a full refresh takes about 2,600 requests and its robots.txt disallows crawling. Each run carries the providers it doesn't fetch over unchanged from the previous release.                                                                                                                                                                                                                                                                                                                                                                         |
+| URL state              | Not needed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Deployment             | Two containers (static web server + updater) with a shared volume. No Coolify-specific features.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Politeness             | Rate-limited, conditional requests, request cache, recorded fixtures for development. User-Agent points to the public GitHub repo URL, never a personal email. Only paths allowed by each provider's robots.txt are fetched, with one deliberate exception: OSM-FR's robots.txt disallows everything, and the project owner chose to crawl it anyway using parameters that matched manual exploration. OSM-FR requests are kept to the minimum: 2s between requests, no retries (any error, 403, 429 or 5xx stops the run), listings and `.poly` files only, and no trees that aren't needed. No automatic updating from OSM-FR is planned unless permission can be obtained later. |
+| Security               | Provider data is untrusted: URLs and crawl links are checked against a provider host allowlist, and cache files are named by hash. The web server can reach only published releases, sends a CSP, and is reachable only through the proxy. Images are pinned and checksum-verified.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Deferred features      | "What covers this point?" lookup, cross-provider compare view, pre-merged OSM-FR extracts, PMTiles.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Architecture
 
@@ -55,7 +56,10 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 ├── tsconfig.json
 ├── shared/
 │   └── schema.ts             # Extract types, shared by web + updater
+├── test/
+│   └── network-guard.ts      # vitest setup: blocks real network in tests
 ├── updater/
+│   ├── config.ts             # User-Agent, provider hosts, cache dir
 │   ├── cli.ts                # thin entry point: parses args, calls runUpdate()
 │   ├── run.ts                # runUpdate(): full pipeline, dependencies passed in
 │   ├── http.ts               # rate-limited, caching, conditional HTTP client
@@ -67,9 +71,9 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── levels.ts             # depth computation + overrides
 │   ├── validate.ts
 │   ├── release.ts            # write release dir, swap symlink, prune
-│   ├── explore/              # one-off exploration scripts (phase 2)
+│   ├── explore/              # one-off scripts (phase 0 recon, fixture trimming, phase 2 reports)
 │   └── config/
-│       ├── osmfr-exclude.json     # pre-merged extracts etc.
+│       ├── osmfr-exclude.json     # extra exclusions (merge/ is skipped by path)
 │       └── level-overrides.json   # manual depth fixes, if needed
 ├── web/
 │   ├── index.html
@@ -136,14 +140,16 @@ interface Extract {
 interface Meta {
   generatedAt: string;
   schemaVersion: number;
-  providers: Record<ProviderId, {
+  // A provider is absent until its first successful fetch (e.g. OSM-FR on a
+  // fresh deploy, before the first manual run).
+  providers: Partial<Record<ProviderId, {
     extractCount: number;
-    fetchedAt: string;
+    fetchedAt: string;        // when this provider's data was last fetched, not when the release was built
     status: "ok" | "stale";   // "stale" = reused previous data after a fetch failure
-  }>;
+  }>>;
   files: {
-    extracts: string;                       // e.g. "extracts.json"
-    boundaries: Record<ProviderId, string>; // e.g. "boundaries-geofabrik.geojson"
+    extracts: string;                                // e.g. "extracts.json"
+    boundaries: Partial<Record<ProviderId, string>>; // e.g. "boundaries-geofabrik.geojson"
   };
 }
 ```
@@ -176,8 +182,8 @@ All network access goes through one client:
 
 1. Conditional GET of `https://download.geofabrik.de/index-v1.json`. One request; a `304` means the boundaries are unchanged.
 2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Geometry comes from the feature itself. The page URL is derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`).
-3. Sizes: HEAD each `urls.pbf` and read `Content-Length`. There are roughly 500+ requests; at 1/s that's under 10 minutes. Sizes are refreshed on every scheduled run, since they change daily. Follow redirects if HEAD returns one, within the HTTP client's host allowlist and hop limit.
-4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Phase 0 checks this by reading a sample of `state.txt` files.
+3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (its format is not checked yet), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Conditional GETs, since pages have ETags. Extracts whose size isn't found get `sizeBytes: null` and are logged. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
+4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Geofabrik's [technical page](https://download.geofabrik.de/technical.html) confirms one update per day for every extract. `state.txt` and `*updates*` are disallowed by robots.txt, so they are never fetched.
 
 ### Replication status (both providers)
 
@@ -192,8 +198,8 @@ After each provider is mapped, set `replication.status` for every extract:
 1. Crawl the `extracts/` tree via nginx autoindex listings, one GET per directory with conditional requests. Collect `*.osm.pbf` entries (name, size, mtime). Listing `href`s are untrusted: resolve each against the current directory URL, then follow it only if it stays on the same origin and under the expected prefix (`/extracts/`, `/polygons/` or `/replication/`) and has no `..` segments after decoding. Skip and log anything else.
 2. Crawl `replication/` the same way and record which extract paths have `minute/`, `hour/` and `day/` subdirectories containing `state.txt`.
 3. For each extract, derive the matching `polygons/<path>.poly` URL. Fetch it only if its `Last-Modified` (from the `polygons/` listing) is newer than the cached copy.
-4. Apply `config/osmfr-exclude.json`. During phase 0, check whether pre-merged extracts can be detected from naming or structure instead.
-5. Parent/child relationships come from the directory structure.
+4. Skip everything under `merge/` (the pre-merged extracts). `config/osmfr-exclude.json` stays available for anything else that needs excluding, but starts empty.
+5. Parent/child relationships come from the directory structure. A directory with no extract of its own (`africa/spain/`, `europe/seas/`) is skipped, and its children get the nearest ancestor that has one.
 6. Report extracts that have no polygon file and polygons that have no extract. Log them rather than failing.
 
 ### `.poly` parser (`updater/poly.ts`)
@@ -214,13 +220,15 @@ After each provider is mapped, set `replication.status` for every extract:
 
 The new release is published only if all of these pass:
 
-- Each provider's extract count is above 0 and hasn't dropped more than 10% from the previous release.
+- Each provider fetched in this run has an extract count above 0 that hasn't dropped more than 10% from the previous release. Providers carried over unchanged are not re-checked.
 - Every extract has a geometry, and each geometry is parseable with a non-empty bounding box.
 - Every `parentKey` resolves to an existing extract.
 - Every URL in `urls` (and `homepage`) parses with `new URL()`, uses `https:`, and points to an allowlisted provider host. Provider data is untrusted, so this stops a `javascript:` or off-site URL from being published as a link. A failing extract is dropped and logged; if more than 10% of a provider's extracts fail, the provider fails validation.
 - `meta.json` matches the schema version.
 
-If one provider fails to fetch, reuse its data from the previous release and mark it `status: "stale"` in `meta.json`. If validation fails, keep the current release, log the reason and exit non-zero.
+Each run fetches only the providers it was asked for (see [Running the updater](#running-the-updater)). Every other provider is copied from the previous release with its `fetchedAt` and `status` unchanged, or left out if the previous release doesn't have it.
+
+If a requested provider fails to fetch, reuse its data from the previous release and mark it `status: "stale"` in `meta.json`. If validation fails, keep the current release, log the reason and exit non-zero.
 
 ### Release (`updater/release.ts`)
 
@@ -230,10 +238,14 @@ If one provider fails to fetch, reuse its data from the previous release and mar
 
 ### Running the updater
 
-- `npm run update-data`: full run, online.
+- `npm run update-data`: online run for Geofabrik only. This is what the weekly schedule runs.
+- `npm run update-data -- --providers osmfr`: online run for OSM-FR only, manual. About 2,600 requests (one replication listing and one `.poly` per extract, plus about 230 directory listings), taking roughly 1.5 hours at OSM-FR's 2s spacing. `.poly` files are re-fetched only when the `polygons/` listing shows a newer date than the cached copy, which cuts later runs to about 1,450 requests.
+- `npm run update-data -- --providers geofabrik,osmfr`: both, manual.
+- OSM-FR is never fetched unless `--providers` names it, so a plain run can't start an OSM-FR crawl by accident.
+- OSM-FR requests use a 2s minimum gap and no retries (any error, 403, 429 or 5xx stops OSM-FR for that run and marks it `stale`), whatever `REQUEST_INTERVAL_MS` is set to.
 - `npm run update-data -- --offline`: build from the cache only (development).
 - `npm run update-data -- --record`: refresh the local cache from the providers (used rarely, to refresh fixtures).
-- `npm run update-data -- --skip-sizes`: skip the HEAD pass (faster during development).
+- `npm run update-data -- --skip-sizes`: skip the size pass (faster during development).
 
 ## Frontend
 
@@ -270,7 +282,7 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
   - Selected extracts, each with provider, size, replication badge, a link to the provider page, and copy buttons for `.pbf`, `.poly` and the replication base URL. Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
   - Total estimated download size, broken down by provider.
   - A "Clear" button.
-- **Footer:** last updated time from `meta.json`, a stale-data notice if any provider is `stale`, an about/attribution link, and a GitHub link.
+- **Footer:** last updated time per provider (each provider's `fetchedAt`, since OSM-FR is refreshed less often), a note for a provider not loaded yet, a stale-data notice if any provider is `stale`, an about/attribution link, and a GitHub link.
 
 ### Map interaction
 
@@ -314,8 +326,8 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 ### `updater` container
 
 - `node:22-alpine` plus `supercronic`, with dependencies installed via `npm ci`.
-- `CRON_SCHEDULE` env var (default weekly, e.g. `0 3 * * 1`).
-- On start: if `current` doesn't exist, run once immediately so a fresh deploy isn't empty.
+- `CRON_SCHEDULE` env var (default weekly, e.g. `0 3 * * 1`). The scheduled job runs `npm run update-data`, which fetches Geofabrik only.
+- On start: if `current` doesn't exist, run once immediately (Geofabrik only) so a fresh deploy isn't empty. OSM-FR appears after the first manual OSM-FR run.
 - The data volume and the cache volume are mounted read-write.
 - Runs as the image's non-root `node` user; both volumes are owned by it.
 
@@ -329,13 +341,16 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 
 ### Manual update
 
-`docker compose exec updater npm run update-data`. This is plain Docker; any host, including Coolify's terminal, can run it.
+- Geofabrik: `docker compose exec updater npm run update-data`.
+- OSM-FR: `docker compose exec updater npm run update-data -- --providers osmfr`. It takes about 1.5 hours, so run it detached (`docker compose exec -d …`) or in a terminal that stays open.
+
+This is plain Docker; any host, including Coolify's terminal, can run it. A run that starts while another is in progress exits immediately (lock file on the data volume).
 
 ### `compose.yaml`
 
 - Two services and two named volumes: `data` (releases, shared) and `cache` (updater only).
 - `web` uses `expose: ["80"]`, not `ports`, so it isn't published on the host and is only reachable through the reverse proxy. TLS and the domain are handled by that proxy (Coolify's in production). For local testing, a `compose.override.yaml` can add a `ports` mapping bound to `127.0.0.1`.
-- Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE` and `REQUEST_INTERVAL_MS` (updater).
+- Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE` and `REQUEST_INTERVAL_MS` (updater; Geofabrik only, since OSM-FR always uses at least 2s).
 
 ## Testing
 
@@ -380,7 +395,7 @@ Coverage thresholds are set to 100% for `updater/**` and `shared/**`. Only two t
   - replication intervals detected from listings.
 - **Replication status:** table-driven tests for `expected` / `differs` / `none`, including "expected interval plus others".
 - **Levels:** depth and leaf computation; overrides applied; an override pointing to a missing key is an error.
-- **Validation:** each rule passes and fails on its own, including `javascript:`, `data:`, `http:` and off-host URLs being rejected; one provider failing reuses the previous data marked `stale`; both failing keeps the current release.
+- **Validation:** each rule passes and fails on its own, including `javascript:`, `data:`, `http:` and off-host URLs being rejected; one provider failing reuses the previous data marked `stale`; both failing keeps the current release; providers not requested are carried over unchanged (and left out if the previous release lacks them); a plain run never makes OSM-FR requests.
 - **Release:** runs against a real temporary directory. Covers writing, the atomic symlink swap, pruning to 3 releases, and a failure mid-write leaving `current` untouched.
 - **Pipeline:** `runUpdate()` in offline mode over the committed fixture subset produces output that matches committed golden files (`fixtures/expected/`). Output changes then show up as a reviewable diff.
 
@@ -444,16 +459,46 @@ Goal: confirm assumptions with as few requests as possible, and record a local c
 - Build `http.ts` first (rate limit, cache, UA, record/offline modes).
 - Run one recording crawl: Geofabrik index, OSM-FR `extracts/`, `polygons/` and `replication/` listings, and all `.poly` files. Skip `.pbf` HEADs except a handful to confirm `Content-Length` behaviour.
 - Verify these assumptions and update this plan where they're wrong:
-  - [ ] Geofabrik public extracts all provide daily updates, and `urls.updates` is present for every extract.
-  - [ ] HEAD on a Geofabrik `-latest.osm.pbf` returns `Content-Length` directly or after a redirect.
-  - [ ] OSM-FR `extracts/<path>` maps cleanly to `polygons/<path>.poly` and `replication/<path>/<interval>/`.
-  - [ ] OSM-FR listings show exact byte sizes (not rounded like `12M`). If rounded, sizes are approximate, which is acceptable for an estimate. Otherwise fall back to HEAD.
-  - [ ] Whether pre-merged OSM-FR extracts can be detected from structure or naming. If not, write the first version of `osmfr-exclude.json`.
-  - [ ] OSM-FR's default interval is minutely (i.e. most extracts have a `minute/` replication directory).
-  - [ ] How many OSM-FR extracts have no change files, or lack minutely ones.
+  - [x] Geofabrik public extracts all provide daily updates, and `urls.updates` is present for every extract. *All 554 have `urls.updates`; daily confirmed from the technical page, not from `state.txt` (disallowed).*
+  - [x] ~~HEAD on a Geofabrik `-latest.osm.pbf` returns `Content-Length`.~~ *Not tested: robots.txt disallows `*.osm.pbf`. Sizes come from region pages instead (checked on `canada.html`).*
+  - [x] OSM-FR `extracts/<path>` maps cleanly to `polygons/<path>.poly` and `replication/<path>/<interval>/`. *Yes: all 1,196 regular extracts have a `.poly` and a `replication/<path>/minute/`; no polygon lacks an extract.*
+  - [x] OSM-FR listings show exact byte sizes. *No: rounded (`311M`, `8G`). Acceptable for an estimate; HEAD is not an option given robots.txt.*
+  - [x] Whether pre-merged OSM-FR extracts can be detected from structure or naming. *Yes: all 4 sit under `extracts/merge/` (`fiji`, `france_metro_dom_com_nc`, `france_taaf`, `kiribati`), so they are excluded by path and `osmfr-exclude.json` isn't needed for now.*
+  - [x] OSM-FR's default interval is minutely. *Yes: every extract has `minute/`, and none has `hour/` or `day/`.*
+  - [x] How many OSM-FR extracts have no change files, or lack minutely ones. *None. So for now the `differs` and `none` badges would never appear for OSM-FR; keep the logic for future changes.*
 - Commit a small trimmed set of fixtures under `fixtures/` for unit tests. The full cache stays gitignored.
 
 **Exit:** the full cache is recorded locally; the assumptions above are confirmed or the plan is updated.
+
+#### Phase 0 findings (2026-11-06)
+
+**OSM-FR robots.txt** is `User-agent: *` / `Disallow: /`, and its `llms.txt` says "YOUR ARE NOT WELCOME HERE". The project owner chose to crawl anyway with parameters matching manual exploration (see the politeness decision). The recording crawl (`updater/explore/osmfr-crawl.ts`) made 2,653 requests at 2s spacing over about 1.5 hours, received 7.7 MB, and got no errors, retries or non-200 responses. It skipped `replication/{bbox,planet,merge}/` and never entered `minute/` directories, apart from 2 sample listings that confirmed `state.txt` is there.
+
+**OSM-FR structure:**
+
+- 1,200 extracts: 1,196 regular and 4 under `merge/`. Depth counts (regular): 8 at depth 0, 200 at 1, 645 at 2, 343 at 3. That's twice as many as Geofabrik and finer-grained (e.g. 17 Quebec regions).
+- Listings are nginx autoindex with no `ETag` or `Last-Modified`, so conditional requests don't help; every run is a full GET per directory. There are 112 directories under each of `extracts/` and `polygons/`, and about 1,200 under `replication/` (one per extract).
+- `.poly` files do send `ETag` and `Last-Modified`, so conditional GETs work for them. Together they come to 6.4 MB.
+- Each extract appears as `<name>.osm.pbf` and `<name>-latest.osm.pbf` (always the same size), plus `.osm.pbf.md5` and `.state.txt`. Dedupe on `<name>.osm.pbf`.
+- Sizes are rounded (`311M`, `8G`).
+- Names are directory names with underscores (`burkina_faso`, `nord_du_quebec`), unlike Geofabrik's hyphens. Display names have to be derived from them (phase 1).
+- Two directories have no extract of their own: `africa/spain/` (Canarias, Ceuta, Melilla) and `europe/seas/` (`ionian_sea`, `north_sea`). Their children take the nearest ancestor that has an extract as their parent (here, `africa` and `europe`).
+- `replication/south-america/brazil/brazil/…` has 27 interval directories with no matching extract, apparently leftovers. They are ignored.
+- Every continent directory in `replication/` also has its own `minute/`.
+
+**`.poly` edge cases seen in real files:** holes are common (e.g. `quebec.poly` has 2 outer rings and 8 holes); 184 files have several outer rings (up to 17); 44 use scientific notation; no longitude goes past ±180, since regions that cross the antimeridian (e.g. `chukotka_autonomous_okrug`, `oceania/tuvalu`) are split at ±180 instead. The first line is free text (`toto`, `polygon`, or a name), so it is ignored.
+
+**Geofabrik robots.txt** disallows `*.osm.pbf`, `*.osm.bz2`, `*.osc.gz`, `*.shp.zip`, `state.txt`, `*.state.txt`, `*updates*` and `*.md5`. `index-v1.json` and the `.html` pages are allowed.
+
+**Geofabrik index (`index-v1.json`)**, 3.8 MB, with `ETag` and `Last-Modified`:
+
+- 554 extracts, all `MultiPolygon`, 146,050 vertices in total (largest 2,016). Every `parent` resolves; ids are unique short slugs (`canada`, `act`), not paths.
+- Depth counts: 9 at depth 0, 266 at 1, 207 at 2, 72 at 3. Leaves: 1 at depth 0 (`antarctica`), 249 at 1, 201 at 2, 72 at 3.
+- Top level: the 7 continents plus `russia` (with 10 federal-district children) and `antarctica` (a leaf).
+- Every `urls.pbf` ends in `-latest.osm.pbf`, so the page URL can be derived. The URLs we use (`pbf`, `updates`) are all on `download.geofabrik.de`; `pbf-internal` and `history` are on `osm-internal.download.geofabrik.de` and `taginfo` on `taginfo.geofabrik.de`, and none of those are used.
+- Region pages list each child with `(335&nbsp;MB)`-style sizes. 31 extracts have children.
+
+Requests made in phase 0: 4 to Geofabrik (robots.txt, `index-v1.json`, `canada.html`, `technical.html`) and about 2,660 to OSM-FR (the crawl plus the first 6 manual ones). Fixtures, written by `updater/explore/trim-fixtures.ts` from the cache: `fixtures/geofabrik/` (10 features from `index-v1.json` covering continents, `russia`, `antarctica` and Canadian provinces, plus `canada.html`) and `fixtures/osmfr/` (13 listings and 6 `.poly` files chosen for the edge cases above).
 
 ### Phase 1: updater core
 
@@ -495,14 +540,14 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 - Dockerfiles (with the shared `test` stage, pinned base images, checksum-verified supercronic and a non-root updater), nginx config (with the security headers and CSP), entrypoint, compose (with `expose` and the separate cache volume), first-run behaviour and the manual update command.
 - Restrict the MapTiler keys by origin.
 - Run the release checklist before the first deploy.
-- One full online run (including the size HEADs) from a local `docker compose up`, checking the request log for request counts and pacing.
+- One full Geofabrik run (including the size pages) from a local `docker compose up`, checking the request log for request counts and pacing. Then one manual OSM-FR run in production, since the production cache volume starts empty.
 - Deploy to Coolify as a standard compose project.
 
 **Exit:** the production site is live, the scheduled update runs, and the manual update works.
 
 ### Phase 5: polish
 
-- Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast; extends the automated tests with a manual screen reader run), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule), empty/error states (data failed to load, stale provider), favicon and meta tags.
+- Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast; extends the automated tests with a manual screen reader run), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule: Geofabrik weekly, OSM-FR occasionally), empty/error states (data failed to load, stale provider), favicon and meta tags.
 
 ### Phase 6: optional features (decide individually)
 
@@ -513,7 +558,10 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 
 ## Open items to resolve during implementation
 
+- **OSM-FR access:** due to robots.txt, the owner chose to limit requests to those matching manual exploration (2026-11-06). No automatic updating of OSM-FR is planned without permission.
+- Geofabrik `index.html` size format for top-level extracts (phase 1).
 - Final level labels and override list (phase 2).
-- Confirm each provider's default replication interval (phase 0).
-- Whether OSM-FR sizes come from listings or HEADs (phase 0).
-- Exclude list contents (phase 0), and whether to show merged extracts (phase 6).
+- Confirm OSM-FR's default replication interval (phase 0, blocked).
+  Geofabrik's is confirmed as daily.
+- Whether to show merged extracts (phase 6).
+- How to derive OSM-FR display names from directory names (phase 1).

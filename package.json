@@ -1,0 +1,26 @@
+{
+  "name": "osm-extract-map",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Web map showing the bounds of extracts offered by Geofabrik and OSM-FR",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "check": "tsc --noEmit",
+    "recon": "node updater/explore/recon.ts"
+  },
+  "dependencies": {
+    "undici": "^8.12.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

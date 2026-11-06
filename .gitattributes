@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Recorded provider responses: keep byte-for-byte (OSM-FR listings use CRLF)
+fixtures/** -text
