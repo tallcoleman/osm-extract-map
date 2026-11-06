@@ -55,20 +55,26 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 ├── package.json              # single package, npm
 ├── tsconfig.json
 ├── shared/
-│   └── schema.ts             # Extract types, shared by web + updater
+│   ├── schema.ts             # Extract types, shared by web + updater
+│   └── urls.ts               # URL allowlist check, shared by web + updater
 ├── test/
-│   └── network-guard.ts      # vitest setup: blocks real network in tests
+│   ├── network-guard.ts      # vitest setup: blocks real network in tests
+│   └── helpers.ts            # loggers, clocks, temp dirs, fixture site server
 ├── updater/
 │   ├── config.ts             # User-Agent, provider hosts, cache dir
-│   ├── cli.ts                # thin entry point: parses args, calls runUpdate()
-│   ├── run.ts                # runUpdate(): full pipeline, dependencies passed in
+│   ├── cli.ts                # thin entry point: wires args, config and clients into runUpdate()
+│   ├── args.ts               # command-line parsing (default: Geofabrik only)
+│   ├── run.ts                # runUpdate(): full pipeline, dependencies passed in; lock file
 │   ├── http.ts               # rate-limited, caching, conditional HTTP client
 │   ├── providers/
+│   │   ├── index.ts          # one HTTP client + fetcher per provider, with its politeness rules
+│   │   ├── types.ts
 │   │   ├── geofabrik.ts
 │   │   └── osmfr.ts
 │   ├── poly.ts               # .poly → GeoJSON
 │   ├── listing.ts            # nginx autoindex HTML parser
 │   ├── levels.ts             # depth computation + overrides
+│   ├── replication.ts        # replication status
 │   ├── validate.ts
 │   ├── release.ts            # write release dir, swap symlink, prune
 │   ├── explore/              # one-off scripts (phase 0 recon, fixture trimming, phase 2 reports)
@@ -80,6 +86,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── src/…                 # React + TS + react-map-gl/maplibre
 │   └── public/
 ├── fixtures/                 # small committed fixtures for unit tests
+│   ├── pipeline/             # small self-consistent provider "site" for the pipeline test
 │   └── expected/             # golden output files for the pipeline test
 ├── docker/
 │   ├── web.Dockerfile
@@ -181,8 +188,8 @@ All network access goes through one client:
 ### Geofabrik (`updater/providers/geofabrik.ts`)
 
 1. Conditional GET of `https://download.geofabrik.de/index-v1.json`. One request; a `304` means the boundaries are unchanged.
-2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Geometry comes from the feature itself. The page URL is derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`).
-3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (its format is not checked yet), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Conditional GETs, since pages have ETags. Extracts whose size isn't found get `sizeBytes: null` and are logged. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
+2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Geometry comes from the feature itself. The page and `.poly` URLs are derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`, `….poly`); the `.poly` is linked, never fetched. A malformed index (bad JSON, missing fields, duplicate ids) fails the provider.
+3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (same table format, checked in phase 1), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Sizes are matched to extracts by `.pbf` URL, whichever page lists them (`russia` isn't on `index.html`, so it should come from another region page; not yet checked). Units are 1024-based: `canada.html` shows "6.1 GB" for a file of 6,514,753,096 bytes. Conditional GETs, since pages have ETags. A page that fails to load, or has no sizes in the expected format, is logged and its children get `sizeBytes: null`; it doesn't fail the provider. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
 4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Geofabrik's [technical page](https://download.geofabrik.de/technical.html) confirms one update per day for every extract. `state.txt` and `*updates*` are disallowed by robots.txt, so they are never fetched.
 
 ### Replication status (both providers)
@@ -195,17 +202,19 @@ After each provider is mapped, set `replication.status` for every extract:
 
 ### OSM-FR (`updater/providers/osmfr.ts`)
 
-1. Crawl the `extracts/` tree via nginx autoindex listings, one GET per directory with conditional requests. Collect `*.osm.pbf` entries (name, size, mtime). Listing `href`s are untrusted: resolve each against the current directory URL, then follow it only if it stays on the same origin and under the expected prefix (`/extracts/`, `/polygons/` or `/replication/`) and has no `..` segments after decoding. Skip and log anything else.
-2. Crawl `replication/` the same way and record which extract paths have `minute/`, `hour/` and `day/` subdirectories containing `state.txt`.
-3. For each extract, derive the matching `polygons/<path>.poly` URL. Fetch it only if its `Last-Modified` (from the `polygons/` listing) is newer than the cached copy.
-4. Skip everything under `merge/` (the pre-merged extracts). `config/osmfr-exclude.json` stays available for anything else that needs excluding, but starts empty.
-5. Parent/child relationships come from the directory structure. A directory with no extract of its own (`africa/spain/`, `europe/seas/`) is skipped, and its children get the nearest ancestor that has one.
-6. Report extracts that have no polygon file and polygons that have no extract. Log them rather than failing.
+1. Crawl the `extracts/` tree via nginx autoindex listings, one GET per directory. Collect `<name>.osm.pbf` entries (name, size, mtime), ignoring the identical `-latest` copies. Listing `href`s are untrusted: resolve each against the current directory URL, then follow it only if it stays on the same origin and under the expected prefix (`/extracts/`, `/polygons/` or `/replication/`) and has no `..` segments after decoding. Skip and log anything else.
+2. List only the `polygons/` and `replication/` directories that are needed: a `polygons/` directory only if the same directory exists under `extracts/`, and a `replication/` directory only if it is an extract or a directory under `extracts/`. This skips `bbox/`, `planet/`, `merge/` and leftovers like `brazil/brazil/` without naming them.
+3. An extract's replication intervals are the `minute/`, `hour/` and `day/` subdirectories in its `replication/<path>/` listing. Those directories are never entered (phase 0 sampled two and found `state.txt`), and `urls.replication` points to the expected interval's directory, or the first one offered.
+4. Fetch each extract's `polygons/<path>.poly`, unless the cached copy's `Last-Modified` is at least as new as the date in the `polygons/` listing; then the cached copy is used with no request.
+5. Skip `merge/` (the pre-merged extracts) by path: it is never listed. `config/osmfr-exclude.json` can exclude other paths (with everything under them), but starts empty.
+6. Parent/child relationships come from the directory structure. A directory with no extract of its own (`africa/spain/`, `europe/seas/`) is skipped, and its children get the nearest ancestor that has one.
+7. Report extracts that have no polygon file and polygons that have no extract. Log them rather than failing. An extract whose `.poly` is missing or doesn't parse is left out, and its children attach to the nearest ancestor that is kept.
+8. Each extract's `urls.page` is its directory listing, the closest thing OSM-FR has to a download page. Display names come from directory names: `_` and `-` become spaces, words are capitalized except connectors after the first word (`and`, `of`, `the`, `de`, `du`, `del`, `og`, `y`, …), `d`/`l`/`o` before another word are elided (`cote_d_or` → "Cote d'Or", `o_higgins` → "O'Higgins"), and `us`, `usa` and `taaf` are upper-cased. Accents can't be recovered.
 
 ### `.poly` parser (`updater/poly.ts`)
 
 - Format: a first line with the file name, then sections. Each section is a name line, `lon lat` coordinate lines, and `END`. A final `END` closes the file.
-- Sections whose name starts with `!` are holes. Assign each hole to the outer ring that contains it (point-in-polygon on the hole's first vertex).
+- Sections whose name starts with `!` are holes. Assign each hole to the outer ring that contains most of its vertices; if outer rings are nested, the smallest one wins a tie. (Testing only the first vertex failed on real data: Quebec's first hole starts exactly on the outer ring's edge.)
 - Output is a GeoJSON `Polygon` or `MultiPolygon` with rings closed and wound per RFC 7946.
 - Edge cases to test: multiple outer sections, holes, scientific notation, longitudes beyond ±180 (antimeridian-crossing regions such as Russia, Fiji and Alaska).
 - Unit tests use small committed fixtures.
@@ -221,9 +230,10 @@ After each provider is mapped, set `replication.status` for every extract:
 The new release is published only if all of these pass:
 
 - Each provider fetched in this run has an extract count above 0 that hasn't dropped more than 10% from the previous release. Providers carried over unchanged are not re-checked.
+- Keys are unique, and depth computation succeeds (no parent cycles, no overrides for missing keys).
 - Every extract has a geometry, and each geometry is parseable with a non-empty bounding box.
 - Every `parentKey` resolves to an existing extract.
-- Every URL in `urls` (and `homepage`) parses with `new URL()`, uses `https:`, and points to an allowlisted provider host. Provider data is untrusted, so this stops a `javascript:` or off-site URL from being published as a link. A failing extract is dropped and logged; if more than 10% of a provider's extracts fail, the provider fails validation.
+- Every URL in `urls` parses with `new URL()`, uses `https:`, and points to its own provider's download host (each `homepage` must be `https:` on an allowlisted host). Provider data is untrusted, so this stops a `javascript:` or off-site URL from being published as a link. A failing extract is dropped and logged; if more than 10% of a provider's extracts fail, the provider fails validation.
 - `meta.json` matches the schema version.
 
 Each run fetches only the providers it was asked for (see [Running the updater](#running-the-updater)). Every other provider is copied from the previous release with its `fetchedAt` and `status` unchanged, or left out if the previous release doesn't have it.
@@ -239,13 +249,15 @@ If a requested provider fails to fetch, reuse its data from the previous release
 ### Running the updater
 
 - `npm run update-data`: online run for Geofabrik only. This is what the weekly schedule runs.
-- `npm run update-data -- --providers osmfr`: online run for OSM-FR only, manual. About 2,600 requests (one replication listing and one `.poly` per extract, plus about 230 directory listings), taking roughly 1.5 hours at OSM-FR's 2s spacing. `.poly` files are re-fetched only when the `polygons/` listing shows a newer date than the cached copy, which cuts later runs to about 1,450 requests.
+- `npm run update-data -- --providers osmfr`: online run for OSM-FR only, manual. About 2,620 requests (one replication listing and one `.poly` per extract, plus about 230 directory listings), taking roughly 1.5 hours at OSM-FR's 2s spacing. `.poly` files are re-fetched only when the `polygons/` listing shows a newer date than the cached copy, which cuts later runs to about 1,420 requests.
 - `npm run update-data -- --providers geofabrik,osmfr`: both, manual.
 - OSM-FR is never fetched unless `--providers` names it, so a plain run can't start an OSM-FR crawl by accident.
 - OSM-FR requests use a 2s minimum gap and no retries (any error, 403, 429 or 5xx stops OSM-FR for that run and marks it `stale`), whatever `REQUEST_INTERVAL_MS` is set to.
 - `npm run update-data -- --offline`: build from the cache only (development).
 - `npm run update-data -- --record`: refresh the local cache from the providers (used rarely, to refresh fixtures).
 - `npm run update-data -- --skip-sizes`: skip the size pass (faster during development).
+- Environment: `DATA_DIR` (default `data/`, gitignored), `CACHE_DIR` (default `.cache/http/`) and `REQUEST_INTERVAL_MS`.
+- A run takes a lock file (`update.lock`) in the data directory and exits non-zero if another run holds it. A lock older than 12 hours is treated as left over from a crash and replaced.
 
 ## Frontend
 
@@ -344,7 +356,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - Geofabrik: `docker compose exec updater npm run update-data`.
 - OSM-FR: `docker compose exec updater npm run update-data -- --providers osmfr`. It takes about 1.5 hours, so run it detached (`docker compose exec -d …`) or in a terminal that stays open.
 
-This is plain Docker; any host, including Coolify's terminal, can run it. A run that starts while another is in progress exits immediately (lock file on the data volume).
+This is plain Docker; any host, including Coolify's terminal, can run it. A run that starts while another is in progress exits immediately (lock file on the data volume, built in phase 1).
 
 ### `compose.yaml`
 
@@ -508,6 +520,21 @@ Requests made in phase 0: 4 to Geofabrik (robots.txt, `index-v1.json`, `canada.h
 
 **Exit:** valid `meta.json`, `extracts.json` and per-provider GeoJSON files build offline; 100% updater coverage; every case in the updater failure-case list has a test; golden files committed.
 
+#### Phase 1 results (2026-11-06)
+
+Done. `npm run update-data -- --offline --providers geofabrik,osmfr` builds a full release from the recorded cache in about 1.5s with no requests: 554 Geofabrik and 1,196 OSM-FR extracts. 330 tests, 100% coverage of `updater/` and `shared/`.
+
+| File | Raw | Gzipped |
+| --- | --- | --- |
+| `boundaries-geofabrik.geojson` | 3.0 MB | 1.1 MB |
+| `boundaries-osmfr.geojson` | 6.7 MB | 1.7 MB |
+| `extracts.json` | 1.1 MB | — |
+
+- One request to Geofabrik: `index.html`, to check its size format (same as region pages). Only `canada.html` and `index.html` are cached, so an offline build has sizes for just 21 Geofabrik extracts. The other 30 region pages are fetched by the first online Geofabrik run (phase 4).
+- No requests to OSM-FR. An offline OSM-FR build reads 2,617 cached responses, which is also the request count for a first online run.
+- The pipeline test builds from `fixtures/pipeline/`, a small self-consistent subset written by `updater/explore/trim-fixtures.ts`. Its responses are real, with listing rows outside the subset removed. Run `npx vitest run updater/pipeline.test.ts -u` to update the golden files after an intended change, then review the diff.
+- `sizeCheckedAt` and each provider's `fetchedAt` come from when the response was recorded, so an offline build reports the cache's age, not the build time.
+
 ### Phase 2: level and data exploration
 
 Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON is.
@@ -559,9 +586,9 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 ## Open items to resolve during implementation
 
 - **OSM-FR access:** due to robots.txt, the owner chose to limit requests to those matching manual exploration (2026-11-06). No automatic updating of OSM-FR is planned without permission.
-- Geofabrik `index.html` size format for top-level extracts (phase 1).
+- ~~Geofabrik `index.html` size format for top-level extracts (phase 1).~~ *Same format as region pages.*
+- Which Geofabrik page lists `russia`'s size (it isn't on `index.html`); check after the first online run.
 - Final level labels and override list (phase 2).
-- Confirm OSM-FR's default replication interval (phase 0, blocked).
-  Geofabrik's is confirmed as daily.
+- ~~Confirm OSM-FR's default replication interval.~~ *Minutely (phase 0). Geofabrik's is daily.*
 - Whether to show merged extracts (phase 6).
-- How to derive OSM-FR display names from directory names (phase 1).
+- ~~How to derive OSM-FR display names from directory names (phase 1).~~ *See the OSM-FR section.*

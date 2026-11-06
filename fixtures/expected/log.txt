@@ -1,0 +1,9 @@
+warn: Geofabrik: no sizes from https://download.geofabrik.de/north-america.html (Not in cache (offline mode), GET: https://download.geofabrik.de/north-america.html)
+warn: Geofabrik: no sizes from https://download.geofabrik.de/russia.html (Not in cache (offline mode), GET: https://download.geofabrik.de/russia.html)
+warn: Geofabrik: no sizes from https://download.geofabrik.de/europe.html (Not in cache (offline mode), GET: https://download.geofabrik.de/europe.html)
+warn: Geofabrik: no size for 4 extracts: canada, russia, kaliningrad, monaco
+info: Geofabrik: 10 extracts
+warn: OSM-FR: 1 extracts have no .poly: africa/spain/melilla
+warn: OSM-FR: 1 polygons have no extract: africa/algeria
+info: OSM-FR: 8 extracts
+info: Published <data>/releases/2026-11-06T18-00-00-000Z (18 extracts)

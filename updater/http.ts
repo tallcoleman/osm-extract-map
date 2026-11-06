@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fetch as undiciFetch } from "undici";
+import { checkAllowedUrl } from "../shared/urls.ts";
 
 export type HttpMode = "online" | "offline" | "record";
 export type HttpMethod = "GET" | "HEAD";
@@ -49,6 +50,15 @@ export interface HttpResponse {
   headers: Record<string, string>;
   body: Buffer;
   source: "network" | "revalidated" | "cache";
+  /** When the body was fetched or last revalidated (ms since epoch). */
+  fetchedAt: number;
+}
+
+export interface GetOptions {
+  /** If the cached copy's Last-Modified is at or after this time (ms since
+   *  epoch), return it without any request. Used when a directory listing
+   *  already shows the file's modification time. */
+  reuseIfNotModifiedSince?: number;
 }
 
 export interface HttpStats {
@@ -107,20 +117,6 @@ const CACHE_VERSION = 1;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Returns the parsed URL if it is https on an allowed host, otherwise null. */
-export function checkAllowedUrl(url: string, allowedHosts: readonly string[]): URL | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "https:") return null;
-  if (parsed.username || parsed.password || parsed.port) return null;
-  if (!allowedHosts.includes(parsed.hostname)) return null;
-  return parsed;
-}
-
 /** Parses a Retry-After value (seconds or HTTP-date) into milliseconds from now. */
 export function parseRetryAfter(value: string | undefined, now: number): number | null {
   if (value === undefined) return null;
@@ -164,8 +160,8 @@ export class HttpClient {
     this.logger = options.logger ?? console;
   }
 
-  get(url: string): Promise<HttpResponse> {
-    return this.request("GET", url);
+  get(url: string, options: GetOptions = {}): Promise<HttpResponse> {
+    return this.request("GET", url, options);
   }
 
   head(url: string): Promise<HttpResponse> {
@@ -191,7 +187,7 @@ export class HttpClient {
     );
   }
 
-  async request(method: HttpMethod, url: string): Promise<HttpResponse> {
+  async request(method: HttpMethod, url: string, options: GetOptions = {}): Promise<HttpResponse> {
     const parsed = this.requireAllowed(url);
     const href = parsed.href;
     const key = cacheKey(method, href);
@@ -206,6 +202,14 @@ export class HttpClient {
     if (cached && this.opts.freshForMs > 0 && this.now() - cached.meta.fetchedAt < this.opts.freshForMs) {
       this.stats.cacheHits++;
       return toResponse(cached.meta, cached.body, "cache");
+    }
+
+    if (cached && options.reuseIfNotModifiedSince !== undefined && cached.meta.status === 200) {
+      const lastModified = Date.parse(cached.meta.headers["last-modified"] ?? "");
+      if (lastModified >= options.reuseIfNotModifiedSince) {
+        this.stats.cacheHits++;
+        return toResponse(cached.meta, cached.body, "cache");
+      }
     }
 
     const conditional: Record<string, string> = {};
@@ -401,5 +405,6 @@ function toResponse(meta: CacheMeta, body: Buffer, source: HttpResponse["source"
     headers: { ...meta.headers },
     body,
     source,
+    fetchedAt: meta.fetchedAt,
   };
 }

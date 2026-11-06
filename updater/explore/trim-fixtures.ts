@@ -82,3 +82,100 @@ for (const p of [...OSMFR_LISTINGS, ...OSMFR_POLYS]) {
   await writeFile(file, await http.getText(`${OSMFR}${p}`));
 }
 console.log(`Wrote ${OSMFR_LISTINGS.length} OSM-FR listings and ${OSMFR_POLYS.length} .poly files`);
+
+// Pipeline fixtures: a small, self-consistent provider "site" for the
+// golden-file test of runUpdate(). Responses are real, but listing rows
+// outside the chosen subset are removed (nothing is added or edited).
+// Saved as fixtures/pipeline/<host>/<path>, with "index.html" for directories.
+const PIPELINE = "fixtures/pipeline";
+
+// Extracts kept. africa/spain/ has no extract of its own; melilla keeps its
+// extract row but loses its .poly row (an extract without a polygon).
+const OSMFR_EXTRACTS = [
+  "africa",
+  "africa/bouvet_island",
+  "africa/reunion",
+  "africa/spain/ceuta",
+  "africa/spain/melilla",
+  "north-america",
+  "north-america/canada",
+  "north-america/canada/quebec",
+  "north-america/canada/quebec/laval",
+];
+const OSMFR_NO_POLY = new Set(["africa/spain/melilla"]);
+// A polygon whose extract row is removed (a polygon without an extract).
+const OSMFR_POLY_ONLY = new Set(["africa/algeria"]);
+const OSMFR_DIRS = new Set(["", "africa", "africa/spain", "north-america", "north-america/canada", "north-america/canada/quebec"]);
+const INTERVAL_DIRS = new Set(["minute", "hour", "day"]);
+
+const ROW_HREF = /^<a href="([^"]*)">/;
+
+/** Removes listing rows that `keep` rejects. `keep` gets the decoded name, without a trailing "/". */
+function trimListing(html: string, keep: (name: string, isDir: boolean) => boolean): string {
+  const eol = html.includes("\r\n") ? "\r\n" : "\n";
+  return html
+    .split(eol)
+    .filter((line) => {
+      const m = ROW_HREF.exec(line);
+      if (!m || m[1] === "../") return true;
+      const href = decodeURIComponent(m[1]!);
+      return keep(href.replace(/\/$/, ""), href.endsWith("/"));
+    })
+    .join(eol);
+}
+
+const stripSuffix = (name: string) => name.replace(/(-latest\.osm\.pbf|\.osm\.pbf\.md5|\.osm\.pbf|\.state\.txt|\.poly)$/, "");
+const join = (rel: string, name: string) => (rel === "" ? name : `${rel}/${name}`);
+
+async function savePipeline(url: string, body: string) {
+  const u = new URL(url);
+  const file = `${PIPELINE}/${u.hostname}${u.pathname}${u.pathname.endsWith("/") ? "index.html" : ""}`;
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, body);
+}
+
+// Geofabrik: the 10 trimmed features, the top-level size page and canada.html.
+// The other parent pages (north-america, europe, russia) are left out, so those
+// children get no size.
+await savePipeline("https://download.geofabrik.de/index-v1.json", JSON.stringify({ type: index.type, features }, null, 1) + "\n");
+for (const page of ["https://download.geofabrik.de/index.html", "https://download.geofabrik.de/north-america/canada.html"]) {
+  await savePipeline(page, await http.getText(page));
+}
+
+const extractSet = new Set(OSMFR_EXTRACTS);
+let osmfrFiles = 0;
+for (const rel of OSMFR_DIRS) {
+  const html = await http.getText(`${OSMFR}/extracts/${rel === "" ? "" : `${rel}/`}`);
+  await savePipeline(
+    `${OSMFR}/extracts/${rel === "" ? "" : `${rel}/`}`,
+    trimListing(html, (name, isDir) => {
+      const p = join(rel, isDir ? name : stripSuffix(name));
+      return isDir ? OSMFR_DIRS.has(p) || p === "merge" : extractSet.has(p);
+    }),
+  );
+  const polys = await http.getText(`${OSMFR}/polygons/${rel === "" ? "" : `${rel}/`}`);
+  await savePipeline(
+    `${OSMFR}/polygons/${rel === "" ? "" : `${rel}/`}`,
+    trimListing(polys, (name, isDir) => {
+      const p = join(rel, isDir ? name : stripSuffix(name));
+      if (isDir) return OSMFR_DIRS.has(p);
+      return (extractSet.has(p) && !OSMFR_NO_POLY.has(p)) || OSMFR_POLY_ONLY.has(p);
+    }),
+  );
+  osmfrFiles += 2;
+}
+for (const rel of [...OSMFR_DIRS, ...OSMFR_EXTRACTS].filter((v, i, a) => a.indexOf(v) === i)) {
+  const url = `${OSMFR}/replication/${rel === "" ? "" : `${rel}/`}`;
+  const html = await http.getText(url);
+  await savePipeline(
+    url,
+    trimListing(html, (name, isDir) => isDir && (INTERVAL_DIRS.has(name) || OSMFR_DIRS.has(join(rel, name)) || extractSet.has(join(rel, name)))),
+  );
+  osmfrFiles++;
+}
+for (const p of OSMFR_EXTRACTS.filter((p) => !OSMFR_NO_POLY.has(p))) {
+  const url = `${OSMFR}/polygons/${p}.poly`;
+  await savePipeline(url, await http.getText(url));
+  osmfrFiles++;
+}
+console.log(`Wrote pipeline fixtures: 3 Geofabrik files, ${osmfrFiles} OSM-FR files`);

@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-11-06T18:00:00.000Z",
+  "schemaVersion": 1,
+  "providers": {
+    "geofabrik": {
+      "extractCount": 10,
+      "fetchedAt": "2026-11-06T16:00:00.000Z",
+      "status": "ok"
+    },
+    "osmfr": {
+      "extractCount": 8,
+      "fetchedAt": "2026-11-06T16:00:00.000Z",
+      "status": "ok"
+    }
+  },
+  "files": {
+    "extracts": "extracts.json",
+    "boundaries": {
+      "geofabrik": "boundaries-geofabrik.geojson",
+      "osmfr": "boundaries-osmfr.geojson"
+    }
+  }
+}

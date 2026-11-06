@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getMockAgent } from "../test/mock-agent.ts";
+import { checkAllowedUrl } from "../shared/urls.ts";
 import {
   cacheKey,
-  checkAllowedUrl,
   HttpClient,
   type HttpClientOptions,
   HttpError,
@@ -266,6 +266,61 @@ describe("HttpClient", () => {
       expect((await client.get(`${ORIGIN}/f`)).body.toString()).toBe("y");
     });
 
+    it("reports when each response was fetched or revalidated", async () => {
+      const { client, clock } = makeClient();
+      const start = clock.now();
+      pool().intercept({ path: "/t" }).reply(200, "x", { headers: { etag: '"1"' } });
+      expect((await client.get(`${ORIGIN}/t`)).fetchedAt).toBe(start);
+      clock.advance(5000);
+      pool().intercept({ path: "/t" }).reply(304, "");
+      expect((await client.get(`${ORIGIN}/t`)).fetchedAt).toBe(start + 5000);
+    });
+
+    describe("reuseIfNotModifiedSince", () => {
+      const lastModified = "Fri, 06 Nov 2026 10:00:00 GMT";
+      const at = Date.parse(lastModified);
+
+      async function primed() {
+        const made = makeClient();
+        pool().intercept({ path: "/p.poly" }).reply(200, "old", { headers: { "last-modified": lastModified } });
+        await made.client.get(`${ORIGIN}/p.poly`);
+        return made;
+      }
+
+      it("serves the cached copy with no request when it is at least as new", async () => {
+        const { client } = await primed();
+        for (const since of [at, at - 60_000]) {
+          const res = await client.get(`${ORIGIN}/p.poly`, { reuseIfNotModifiedSince: since });
+          expect(res.source).toBe("cache");
+          expect(res.body.toString()).toBe("old");
+        }
+        expect(client.getStats()).toMatchObject({ requests: 1, cacheHits: 2 });
+      });
+
+      it("requests the file when the listing shows a newer date", async () => {
+        const { client } = await primed();
+        pool().intercept({ path: "/p.poly" }).reply(200, "new");
+        const res = await client.get(`${ORIGIN}/p.poly`, { reuseIfNotModifiedSince: at + 60_000 });
+        expect(res.body.toString()).toBe("new");
+      });
+
+      it("requests the file when the cached copy has no Last-Modified", async () => {
+        const { client } = makeClient({ mode: "record" });
+        pool().intercept({ path: "/q.poly" }).reply(200, "a");
+        await client.get(`${ORIGIN}/q.poly`);
+        pool().intercept({ path: "/q.poly" }).reply(200, "b");
+        expect((await client.get(`${ORIGIN}/q.poly`, { reuseIfNotModifiedSince: 0 })).body.toString()).toBe("b");
+      });
+
+      it("never reuses a cached error response", async () => {
+        const { client } = makeClient({ mode: "record" });
+        pool().intercept({ path: "/r.poly" }).reply(404, "", { headers: { "last-modified": lastModified } });
+        await client.get(`${ORIGIN}/r.poly`);
+        pool().intercept({ path: "/r.poly" }).reply(200, "ok");
+        expect((await client.get(`${ORIGIN}/r.poly`, { reuseIfNotModifiedSince: 0 })).status).toBe(200);
+      });
+    });
+
     it("ignores unreadable or outdated cache entries", async () => {
       const url = `${ORIGIN}/bad-cache`;
       const key = cacheKey("GET", url);
@@ -504,7 +559,8 @@ describe("HttpClient", () => {
   });
 
   it("uses real defaults for clock, sleep and logger", async () => {
-    const client = new HttpClient({ cacheDir, allowedHosts: [HOST], userAgent: UA, minIntervalMs: 1 });
+    // Long enough that the second request always has to wait, so the real sleep runs.
+    const client = new HttpClient({ cacheDir, allowedHosts: [HOST], userAgent: UA, minIntervalMs: 50 });
     pool().intercept({ path: /\/def\d/ }).reply(200, "x").times(2);
     await client.get(`${ORIGIN}/def1`);
     await client.get(`${ORIGIN}/def2`);

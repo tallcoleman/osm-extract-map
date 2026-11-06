@@ -1,0 +1,434 @@
+[
+  {
+    "key": "geofabrik:antarctica",
+    "provider": "geofabrik",
+    "id": "antarctica",
+    "name": "Antarctica",
+    "parentKey": null,
+    "sizeBytes": 33135002,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/antarctica.html",
+      "pbf": "https://download.geofabrik.de/antarctica-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/antarctica.poly",
+      "replication": "https://download.geofabrik.de/antarctica-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:british-columbia",
+    "provider": "geofabrik",
+    "id": "british-columbia",
+    "name": "British Columbia",
+    "parentKey": "geofabrik:canada",
+    "sizeBytes": 1288490189,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/north-america/canada/british-columbia.html",
+      "pbf": "https://download.geofabrik.de/north-america/canada/british-columbia-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/north-america/canada/british-columbia.poly",
+      "replication": "https://download.geofabrik.de/north-america/canada/british-columbia-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 2,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:canada",
+    "provider": "geofabrik",
+    "id": "canada",
+    "name": "Canada",
+    "parentKey": "geofabrik:north-america",
+    "sizeBytes": null,
+    "sizeCheckedAt": null,
+    "urls": {
+      "page": "https://download.geofabrik.de/north-america/canada.html",
+      "pbf": "https://download.geofabrik.de/north-america/canada-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/north-america/canada.poly",
+      "replication": "https://download.geofabrik.de/north-america/canada-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": false
+  },
+  {
+    "key": "geofabrik:europe",
+    "provider": "geofabrik",
+    "id": "europe",
+    "name": "Europe",
+    "parentKey": null,
+    "sizeBytes": 35433480192,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/europe.html",
+      "pbf": "https://download.geofabrik.de/europe-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/europe.poly",
+      "replication": "https://download.geofabrik.de/europe-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": false
+  },
+  {
+    "key": "geofabrik:kaliningrad",
+    "provider": "geofabrik",
+    "id": "kaliningrad",
+    "name": "Kaliningrad",
+    "parentKey": "geofabrik:russia",
+    "sizeBytes": null,
+    "sizeCheckedAt": null,
+    "urls": {
+      "page": "https://download.geofabrik.de/russia/kaliningrad.html",
+      "pbf": "https://download.geofabrik.de/russia/kaliningrad-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/russia/kaliningrad.poly",
+      "replication": "https://download.geofabrik.de/russia/kaliningrad-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:monaco",
+    "provider": "geofabrik",
+    "id": "monaco",
+    "name": "Monaco",
+    "parentKey": "geofabrik:europe",
+    "sizeBytes": null,
+    "sizeCheckedAt": null,
+    "urls": {
+      "page": "https://download.geofabrik.de/europe/monaco.html",
+      "pbf": "https://download.geofabrik.de/europe/monaco-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/europe/monaco.poly",
+      "replication": "https://download.geofabrik.de/europe/monaco-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:north-america",
+    "provider": "geofabrik",
+    "id": "north-america",
+    "name": "North America",
+    "parentKey": null,
+    "sizeBytes": 19542101197,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/north-america.html",
+      "pbf": "https://download.geofabrik.de/north-america-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/north-america.poly",
+      "replication": "https://download.geofabrik.de/north-america-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": false
+  },
+  {
+    "key": "geofabrik:nunavut",
+    "provider": "geofabrik",
+    "id": "nunavut",
+    "name": "Nunavut",
+    "parentKey": "geofabrik:canada",
+    "sizeBytes": 1503238554,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/north-america/canada/nunavut.html",
+      "pbf": "https://download.geofabrik.de/north-america/canada/nunavut-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/north-america/canada/nunavut.poly",
+      "replication": "https://download.geofabrik.de/north-america/canada/nunavut-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 2,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:quebec",
+    "provider": "geofabrik",
+    "id": "quebec",
+    "name": "Quebec",
+    "parentKey": "geofabrik:canada",
+    "sizeBytes": 1181116006,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.geofabrik.de/north-america/canada/quebec.html",
+      "pbf": "https://download.geofabrik.de/north-america/canada/quebec-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/north-america/canada/quebec.poly",
+      "replication": "https://download.geofabrik.de/north-america/canada/quebec-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 2,
+    "isLeaf": true
+  },
+  {
+    "key": "geofabrik:russia",
+    "provider": "geofabrik",
+    "id": "russia",
+    "name": "Russian Federation",
+    "parentKey": null,
+    "sizeBytes": null,
+    "sizeCheckedAt": null,
+    "urls": {
+      "page": "https://download.geofabrik.de/russia.html",
+      "pbf": "https://download.geofabrik.de/russia-latest.osm.pbf",
+      "poly": "https://download.geofabrik.de/russia.poly",
+      "replication": "https://download.geofabrik.de/russia-updates"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "day"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": false
+  },
+  {
+    "key": "osmfr:africa",
+    "provider": "osmfr",
+    "id": "africa",
+    "name": "Africa",
+    "parentKey": null,
+    "sizeBytes": 8589934592,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/",
+      "pbf": "https://download.openstreetmap.fr/extracts/africa.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/africa.poly",
+      "replication": "https://download.openstreetmap.fr/replication/africa/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": false
+  },
+  {
+    "key": "osmfr:africa/bouvet_island",
+    "provider": "osmfr",
+    "id": "africa/bouvet_island",
+    "name": "Bouvet Island",
+    "parentKey": "osmfr:africa",
+    "sizeBytes": 34816,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/africa/",
+      "pbf": "https://download.openstreetmap.fr/extracts/africa/bouvet_island.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/africa/bouvet_island.poly",
+      "replication": "https://download.openstreetmap.fr/replication/africa/bouvet_island/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": true
+  },
+  {
+    "key": "osmfr:africa/reunion",
+    "provider": "osmfr",
+    "id": "africa/reunion",
+    "name": "Reunion",
+    "parentKey": "osmfr:africa",
+    "sizeBytes": 37748736,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/africa/",
+      "pbf": "https://download.openstreetmap.fr/extracts/africa/reunion.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/africa/reunion.poly",
+      "replication": "https://download.openstreetmap.fr/replication/africa/reunion/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": true
+  },
+  {
+    "key": "osmfr:africa/spain/ceuta",
+    "provider": "osmfr",
+    "id": "africa/spain/ceuta",
+    "name": "Ceuta",
+    "parentKey": "osmfr:africa",
+    "sizeBytes": 736256,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/africa/spain/",
+      "pbf": "https://download.openstreetmap.fr/extracts/africa/spain/ceuta.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/africa/spain/ceuta.poly",
+      "replication": "https://download.openstreetmap.fr/replication/africa/spain/ceuta/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": true
+  },
+  {
+    "key": "osmfr:north-america",
+    "provider": "osmfr",
+    "id": "north-america",
+    "name": "North America",
+    "parentKey": null,
+    "sizeBytes": 21474836480,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/",
+      "pbf": "https://download.openstreetmap.fr/extracts/north-america.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/north-america.poly",
+      "replication": "https://download.openstreetmap.fr/replication/north-america/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 0,
+    "isLeaf": false
+  },
+  {
+    "key": "osmfr:north-america/canada",
+    "provider": "osmfr",
+    "id": "north-america/canada",
+    "name": "Canada",
+    "parentKey": "osmfr:north-america",
+    "sizeBytes": 6442450944,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/north-america/",
+      "pbf": "https://download.openstreetmap.fr/extracts/north-america/canada.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/north-america/canada.poly",
+      "replication": "https://download.openstreetmap.fr/replication/north-america/canada/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 1,
+    "isLeaf": false
+  },
+  {
+    "key": "osmfr:north-america/canada/quebec",
+    "provider": "osmfr",
+    "id": "north-america/canada/quebec",
+    "name": "Quebec",
+    "parentKey": "osmfr:north-america/canada",
+    "sizeBytes": 1073741824,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/north-america/canada/",
+      "pbf": "https://download.openstreetmap.fr/extracts/north-america/canada/quebec.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/north-america/canada/quebec.poly",
+      "replication": "https://download.openstreetmap.fr/replication/north-america/canada/quebec/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 2,
+    "isLeaf": false
+  },
+  {
+    "key": "osmfr:north-america/canada/quebec/laval",
+    "provider": "osmfr",
+    "id": "north-america/canada/quebec/laval",
+    "name": "Laval",
+    "parentKey": "osmfr:north-america/canada/quebec",
+    "sizeBytes": 9437184,
+    "sizeCheckedAt": "2026-11-06T16:00:00.000Z",
+    "urls": {
+      "page": "https://download.openstreetmap.fr/extracts/north-america/canada/quebec/",
+      "pbf": "https://download.openstreetmap.fr/extracts/north-america/canada/quebec/laval.osm.pbf",
+      "poly": "https://download.openstreetmap.fr/polygons/north-america/canada/quebec/laval.poly",
+      "replication": "https://download.openstreetmap.fr/replication/north-america/canada/quebec/laval/minute/"
+    },
+    "replication": {
+      "available": true,
+      "intervals": [
+        "minute"
+      ],
+      "status": "expected"
+    },
+    "depth": 3,
+    "isLeaf": true
+  }
+]
