@@ -47,7 +47,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 /
 ├── design.md
 ├── implementation-plan.md
-├── package.json              # single package, pnpm
+├── package.json              # single package, npm
 ├── tsconfig.json
 ├── shared/
 │   └── schema.ts             # Extract types, shared by web + updater
@@ -79,7 +79,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 └── compose.yaml
 ```
 
-A single package keeps tooling simple. If the web and updater dependencies diverge a lot, this can be split into pnpm workspaces later.
+A single package keeps tooling simple. If the web and updater dependencies diverge a lot, this can be split into npm workspaces later.
 
 ## Data model
 
@@ -221,10 +221,10 @@ If one provider fails to fetch, reuse its data from the previous release and mar
 
 ### Running the updater
 
-- `pnpm update-data`: full run, online.
-- `pnpm update-data --offline`: build from the cache only (development).
-- `pnpm update-data --record`: refresh the local cache from the providers (used rarely, to refresh fixtures).
-- `pnpm update-data --skip-sizes`: skip the HEAD pass (faster during development).
+- `npm run update-data`: full run, online.
+- `npm run update-data -- --offline`: build from the cache only (development).
+- `npm run update-data -- --record`: refresh the local cache from the providers (used rarely, to refresh fixtures).
+- `npm run update-data -- --skip-sizes`: skip the HEAD pass (faster during development).
 
 ## Frontend
 
@@ -285,7 +285,7 @@ OSM data © OpenStreetMap contributors (ODbL), extract boundaries © Geofabrik /
 
 ### `web` container
 
-- Multi-stage Dockerfile: a Node stage builds the Vite app, then copies `dist/` into `nginx:alpine`.
+- Multi-stage Dockerfile: a Node stage installs with `npm ci` and builds the Vite app, then copies `dist/` into `nginx:alpine`.
 - nginx config:
   - The data volume is mounted read-only. `/data/` serves `current/` from it.
   - Hashed app assets: `Cache-Control: public, max-age=31536000, immutable`.
@@ -295,14 +295,14 @@ OSM data © OpenStreetMap contributors (ODbL), extract boundaries © Geofabrik /
 
 ### `updater` container
 
-- `node:22-alpine` plus `supercronic`.
+- `node:22-alpine` plus `supercronic`, with dependencies installed via `npm ci`.
 - `CRON_SCHEDULE` env var (default weekly, e.g. `0 3 * * 1`).
 - On start: if `current` doesn't exist, run once immediately so a fresh deploy isn't empty.
 - The data volume is mounted read-write.
 
 ### Manual update
 
-`docker compose exec updater pnpm update-data`. This is plain Docker; any host, including Coolify's terminal, can run it.
+`docker compose exec updater npm run update-data`. This is plain Docker; any host, including Coolify's terminal, can run it.
 
 ### `compose.yaml`
 
@@ -334,7 +334,7 @@ Goal: confirm assumptions with as few requests as possible, and record a local c
 
 - `shared/schema.ts`, the `.poly` parser, the listing parser, both providers, levels, validation and release writing.
 - Unit tests (vitest) for the poly parser, listing parser and level computation.
-- `pnpm update-data --offline` produces a complete release directory from the cache.
+- `npm run update-data -- --offline` produces a complete release directory from the cache.
 
 **Exit:** valid `meta.json`, `extracts.json` and per-provider GeoJSON files build offline.
 
