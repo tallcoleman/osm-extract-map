@@ -45,8 +45,9 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 
 ```
 /
-├── design.md
-├── implementation-plan.md
+├── docs/
+│   ├── design.md
+│   └── implementation-plan.md
 ├── package.json              # single package, npm
 ├── tsconfig.json
 ├── shared/
