@@ -274,7 +274,12 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 
 ### Attribution
 
-OSM data © OpenStreetMap contributors (ODbL), extract boundaries © Geofabrik / OpenStreetMap France, and MapTiler basemap attribution.
+MapLibre's attribution control collects the `attribution` strings from every loaded source. The MapTiler basemap style already brings its own (typically "© MapTiler © OpenStreetMap contributors"). So attribution starts with a check, and only what's missing gets added:
+
+1. In phase 3, load the chosen basemap style and record what attribution it shows by default.
+2. Add anything still needed as the `attribution` property on our own GeoJSON sources, not as separate page text. It then appears in the same control, and only while that provider's layer is loaded. Expected additions: boundary credit for Geofabrik and OpenStreetMap France, linking to their sites.
+3. Don't duplicate credits the basemap already shows (e.g. "© OpenStreetMap contributors").
+4. The about modal can explain the data sources in more detail, but the map's attribution control is the source of truth.
 
 ### Accessibility and mobile
 
@@ -385,6 +390,7 @@ Run before the first deploy and after major frontend changes:
 
 - [ ] Map loads real data with both providers at every level, including the coarser fallback styling.
 - [ ] Selection, totals, copy buttons and provider links work.
+- [ ] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
 - [ ] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
 - [ ] Performance is still acceptable with both providers at leaf level.
