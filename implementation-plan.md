@@ -52,7 +52,8 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 ├── shared/
 │   └── schema.ts             # Extract types, shared by web + updater
 ├── updater/
-│   ├── run.ts                # entry point: full update pipeline
+│   ├── cli.ts                # thin entry point: parses args, calls runUpdate()
+│   ├── run.ts                # runUpdate(): full pipeline, dependencies passed in
 │   ├── http.ts               # rate-limited, caching, conditional HTTP client
 │   ├── providers/
 │   │   ├── geofabrik.ts
@@ -71,6 +72,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── src/…                 # React + TS + react-map-gl/maplibre
 │   └── public/
 ├── fixtures/                 # small committed fixtures for unit tests
+│   └── expected/             # golden output files for the pipeline test
 ├── docker/
 │   ├── web.Dockerfile
 │   ├── web-entrypoint.sh     # writes config.json from env at start
@@ -310,6 +312,96 @@ OSM data © OpenStreetMap contributors (ODbL), extract boundaries © Geofabrik /
 - `web` exposes port 80 only. TLS and the domain are handled by whatever reverse proxy sits in front (Coolify's proxy in production).
 - Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE` and `REQUEST_INTERVAL_MS` (updater).
 
+## Testing
+
+### Approach
+
+| Area | Target | Tools |
+| --- | --- | --- |
+| Updater and shared code (`updater/`, `shared/`) | 100% line, branch and function coverage, enforced in CI and the Docker build | vitest, `@vitest/coverage-v8`, undici `MockAgent` |
+| Frontend logic and components (`web/src/`) | Good coverage of key features and accessibility; no hard threshold | vitest (jsdom), React Testing Library, `@testing-library/user-event`, `vitest-axe` |
+| End-to-end / browser | None. Replaced by a short manual release checklist | — |
+| Static checks | Type check and lint must pass | `tsc --noEmit`, ESLint with `eslint-plugin-jsx-a11y` |
+
+Vitest is set up with two projects: `updater` (Node environment) and `web` (jsdom environment). A single `npm test` runs both.
+
+### Updater: 100% coverage, and coverage isn't the whole goal
+
+Coverage thresholds are set to 100% for `updater/**` and `shared/**`. Only two things are excluded: `updater/explore/` (one-off scripts) and `updater/cli.ts`, a thin entry point that parses arguments and calls `runUpdate()`. All real logic goes in modules that take their dependencies (HTTP client, clock, filesystem root, logger) as parameters, so they can be tested without global mocks.
+
+100% coverage shows every line ran, not that every failure is handled. Tests must also cover each case in this list explicitly:
+
+- **No real network, ever.** A global test setup installs an undici `MockAgent` with `disableNetConnect()`, so any unmocked request fails the test.
+- **HTTP client:**
+  - minimum spacing between requests (fake timers) and one request in flight at a time;
+  - the exact `User-Agent` string;
+  - conditional headers sent when cached; a `304` returns the cached body;
+  - retries with backoff on 5xx and network errors, giving up after the limit;
+  - `Retry-After` honoured (both seconds and HTTP-date forms); no retry on 4xx;
+  - offline mode fails on a cache miss; record mode writes to the cache;
+  - HEAD with redirects; a missing `Content-Length` gives `sizeBytes: null`.
+- **`.poly` parser:**
+  - committed real-world fixtures;
+  - multiple outer rings, holes assigned to the correct outer ring, scientific notation, longitudes beyond ±180, ring closing and winding order;
+  - malformed input (missing `END`, non-numeric coordinates, empty file) gives a clear error.
+  - A property-based round-trip test (`fast-check`): generate a polygon, write it as `.poly`, parse it, and compare.
+- **Listing parser:** recorded nginx autoindex HTML; files vs. directories; sizes and dates; unexpected HTML gives a clear error, never a silently empty result.
+- **Providers:**
+  - mapping from fixture data to `Extract` records, including derived page and `.poly` URLs;
+  - exclude list applied; parent/child links;
+  - extracts without polygons, and polygons without extracts, are logged and not fatal;
+  - replication intervals detected from listings.
+- **Replication status:** table-driven tests for `expected` / `differs` / `none`, including "expected interval plus others".
+- **Levels:** depth and leaf computation; overrides applied; an override pointing to a missing key is an error.
+- **Validation:** each rule passes and fails on its own; one provider failing reuses the previous data marked `stale`; both failing keeps the current release.
+- **Release:** runs against a real temporary directory. Covers writing, the atomic symlink swap, pruning to 3 releases, and a failure mid-write leaving `current` untouched.
+- **Pipeline:** `runUpdate()` in offline mode over the committed fixture subset produces output that matches committed golden files (`fixtures/expected/`). Output changes then show up as a reviewable diff.
+
+### Frontend
+
+MapLibre needs WebGL, which jsdom doesn't have. So map behaviour is split into two parts:
+
+- **Pure logic modules (`web/src/lib/`), where most frontend tests go:**
+  - building the level filter expression (including the coarser fallback) and provider filters;
+  - the selection reducer, size totals and size formatting;
+  - badge text from `replication.status`;
+  - search and sorting;
+  - the list of candidates for the overlap picker;
+  - loading data/config, including error and stale states.
+- **The map component:** `react-map-gl` is mocked. Tests check that the right sources, layers, filters and event handlers are passed in, and that a mocked click with several features opens the overlap picker. Real rendering is checked by hand (see the checklist below).
+
+Component tests (React Testing Library + user-event) cover the provider toggle, level selector, search, extract list, selection panel, copy buttons (clipboard mocked), about modal, bottom sheet, and the error/stale notices.
+
+Accessibility tests:
+
+- `vitest-axe` checks on each major component in its main states (empty, with selection, with warnings, error).
+- **Keyboard-only flows:** reach every control with Tab; select and deselect extracts from the list with Enter/Space; open and close the modal with focus trapped inside and returned afterwards; Escape closes the overlap picker and modal.
+- **Screen reader text:** badges have text labels; changes to the selection total are announced through an `aria-live` region; icon-only buttons have accessible names.
+- **Colour contrast:** axe can't measure contrast in jsdom. Instead, a unit test checks the colour tokens directly: at least 4.5:1 for text and badges against their backgrounds, and at least 3:1 for the provider line colours against a representative basemap background colour.
+
+### Release checklist (manual, instead of end-to-end tests)
+
+Run before the first deploy and after major frontend changes:
+
+- [ ] Map loads real data with both providers at every level, including the coarser fallback styling.
+- [ ] Selection, totals, copy buttons and provider links work.
+- [ ] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
+- [ ] Quick screen reader pass (VoiceOver) through the main flow.
+- [ ] Performance is still acceptable with both providers at leaf level.
+
+### Keeping fixtures honest
+
+Tests use recorded data, so they keep passing even if a provider changes its format. Two things catch that:
+
+- The production validation step refuses to publish bad output and logs why.
+- When validation fails, or roughly every few months, refresh with `npm run update-data -- --record`, update the trimmed fixtures, and review the golden-file diff.
+
+### Where tests run
+
+- `npm test`: all tests. `npm run test:coverage`: with coverage thresholds. `npm run check`: type check and lint.
+- **Docker build:** both Dockerfiles start from a shared `test` stage that runs `npm run check` and `npm run test:coverage`. A failing test blocks the image build, so nothing broken gets deployed. This needs no outside CI service.
+- **Optional:** a GitHub Actions workflow running the same commands on pull requests, for earlier feedback. It isn't needed for deployment.
+
 ## Phases
 
 ### Phase 0: reconnaissance and fixtures
@@ -333,10 +425,10 @@ Goal: confirm assumptions with as few requests as possible, and record a local c
 ### Phase 1: updater core
 
 - `shared/schema.ts`, the `.poly` parser, the listing parser, both providers, levels, validation and release writing.
-- Unit tests (vitest) for the poly parser, listing parser and level computation.
+- Test setup (vitest projects, network guard, coverage thresholds) goes in first, and tests are written alongside each module (see [Testing](#testing)).
 - `npm run update-data -- --offline` produces a complete release directory from the cache.
 
-**Exit:** valid `meta.json`, `extracts.json` and per-provider GeoJSON files build offline.
+**Exit:** valid `meta.json`, `extracts.json` and per-provider GeoJSON files build offline; 100% updater coverage; every case in the updater failure-case list has a test; golden files committed.
 
 ### Phase 2: level and data exploration
 
@@ -361,11 +453,14 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 - Map, provider toggle, level selector with coarser-fallback styling, hover, click selection with the overlap picker, selection panel with totals, badges, copy buttons, provider links, attribution and last-updated footer.
 - **GeoJSON performance check** on desktop and a mid-range phone (or Chrome CPU throttling): time to first render, pan/zoom smoothness with both providers at leaf level, and memory use. If it's acceptable, keep GeoJSON. If not, try simplifying first (mapshaper at a light tolerance), and consider PMTiles only after that.
 
-**Exit:** all core features work locally against offline data; the performance decision is recorded.
+- Logic modules and component tests, including the accessibility tests, written alongside the features.
+
+**Exit:** all core features work locally against offline data and have tests; the performance decision is recorded.
 
 ### Phase 4: deployment
 
-- Dockerfiles, nginx config, entrypoint, compose, supercronic, first-run behaviour and the manual update command.
+- Dockerfiles (with the shared `test` stage), nginx config, entrypoint, compose, supercronic, first-run behaviour and the manual update command.
+- Run the release checklist before the first deploy.
 - One full online run (including the size HEADs) from a local `docker compose up`, checking the request log for request counts and pacing.
 - Deploy to Coolify as a standard compose project.
 
@@ -373,7 +468,7 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 
 ### Phase 5: polish
 
-- Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule), empty/error states (data failed to load, stale provider), favicon and meta tags.
+- Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast; extends the automated tests with a manual screen reader run), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule), empty/error states (data failed to load, stale provider), favicon and meta tags.
 
 ### Phase 6: optional features (decide individually)
 
