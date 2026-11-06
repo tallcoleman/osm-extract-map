@@ -93,6 +93,9 @@ describe("fetchOsmfr on the recorded subset", () => {
       "north-america/canada",
       "north-america/canada/quebec",
       "north-america/canada/quebec/laval",
+      "russia",
+      "russia/northwestern_federal_district",
+      "russia/northwestern_federal_district/kaliningrad_oblast",
     ]);
     const ceuta = data.extracts.find((e) => e.id === "africa/spain/ceuta")!;
     expect(ceuta).toEqual({

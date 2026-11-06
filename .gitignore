@@ -5,3 +5,6 @@ coverage/
 
 # Local release output from npm run update-data
 data/
+
+# Local MapTiler key for development (production writes it at container start)
+web/public/config.json

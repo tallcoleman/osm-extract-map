@@ -30,10 +30,10 @@ describe("loadUpdaterConfig", () => {
 
   it("loads and checks files from another directory", async () => {
     const tmp = await makeTempDir("config-test-");
-    await writeFile(path.join(tmp.dir, "level-overrides.json"), '{"geofabrik:russia": 1}');
+    await writeFile(path.join(tmp.dir, "level-overrides.json"), '{"depth": {"geofabrik:russia": 1}, "bundles": ["geofabrik:dach"]}');
     await writeFile(path.join(tmp.dir, "osmfr-exclude.json"), '["europe/france"]');
     expect(await loadUpdaterConfig(tmp.dir)).toEqual({
-      levelOverrides: { "geofabrik:russia": 1 },
+      levelOverrides: { depth: { "geofabrik:russia": 1 }, bundles: ["geofabrik:dach"] },
       osmfrExclude: ["europe/france"],
     });
     await writeFile(path.join(tmp.dir, "osmfr-exclude.json"), '["../etc"]');

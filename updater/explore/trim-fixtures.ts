@@ -101,11 +101,24 @@ const OSMFR_EXTRACTS = [
   "north-america/canada",
   "north-america/canada/quebec",
   "north-america/canada/quebec/laval",
+  // Russia is moved to depth 1 by level-overrides.json.
+  "russia",
+  "russia/northwestern_federal_district",
+  "russia/northwestern_federal_district/kaliningrad_oblast",
 ];
 const OSMFR_NO_POLY = new Set(["africa/spain/melilla"]);
 // A polygon whose extract row is removed (a polygon without an extract).
 const OSMFR_POLY_ONLY = new Set(["africa/algeria"]);
-const OSMFR_DIRS = new Set(["", "africa", "africa/spain", "north-america", "north-america/canada", "north-america/canada/quebec"]);
+const OSMFR_DIRS = new Set([
+  "",
+  "africa",
+  "africa/spain",
+  "north-america",
+  "north-america/canada",
+  "north-america/canada/quebec",
+  "russia",
+  "russia/northwestern_federal_district",
+]);
 const INTERVAL_DIRS = new Set(["minute", "hour", "day"]);
 
 const ROW_HREF = /^<a href="([^"]*)">/;

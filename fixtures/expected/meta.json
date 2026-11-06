@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-06T18:00:00.000Z",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "providers": {
     "geofabrik": {
       "extractCount": 10,
@@ -8,7 +8,7 @@
       "status": "ok"
     },
     "osmfr": {
-      "extractCount": 8,
+      "extractCount": 11,
       "fetchedAt": "2026-11-06T16:00:00.000Z",
       "status": "ok"
     }

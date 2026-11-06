@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeClock, makeLogger, makeTempDir } from "../../test/helpers.ts";
 import { getMockAgent } from "../../test/mock-agent.ts";
 import { HttpClient, HttpError } from "../http.ts";
-import { fetchGeofabrik, parseSizePage } from "./geofabrik.ts";
+import { fetchGeofabrik, type IndexFeature, parseSizePage, tidyIndex } from "./geofabrik.ts";
 import { ProviderFormatError } from "./types.ts";
 
 const ORIGIN = "https://download.geofabrik.de";
@@ -69,6 +69,56 @@ describe("parseSizePage", () => {
 
   it("finds nothing in an unrelated page", () => {
     expect(parseSizePage("<html>hello</html>", `${ORIGIN}/a.html`).size).toBe(0);
+  });
+});
+
+describe("tidyIndex", () => {
+  const f = (id: string, parent: string | null, name = id): IndexFeature => ({
+    id,
+    parent,
+    name,
+    pbf: `${ORIGIN}/${id}-latest.osm.pbf`,
+    updates: null,
+    geometry: { type: "MultiPolygon", coordinates: [] },
+  });
+  const tidy = (...features: IndexFeature[]) => tidyIndex(features).map((x) => [x.id, x.parent, x.name]);
+
+  it("moves us/<state> from beside us to under it, and names it", () => {
+    expect(
+      tidy(
+        f("north-america", null, "North America"),
+        f("us", "north-america", "United States of America"),
+        f("us/alabama", "north-america"),
+        f("us/georgia", "north-america", "Georgia"),
+        f("us/district-of-columbia", "north-america"),
+        f("us/us-virgin-islands", "north-america"),
+        f("us/california", "north-america"),
+        f("us/california/norcal", "us/california", "Northern California"),
+      ),
+    ).toEqual([
+      ["north-america", null, "North America"],
+      ["us", "north-america", "United States of America"],
+      ["us/alabama", "us", "Alabama"],
+      ["us/georgia", "us", "Georgia"],
+      ["us/district-of-columbia", "us", "District of Columbia"],
+      ["us/us-virgin-islands", "us", "US Virgin Islands"],
+      ["us/california", "us", "California"],
+      ["us/california/norcal", "us/california", "Northern California"],
+    ]);
+  });
+
+  it("leaves a slash id alone when the prefix isn't a sibling or doesn't exist", () => {
+    expect(tidy(f("a", null, "A"), f("b", "a", "B"), f("b/x", "a", "X"), f("a/y", "b", "Y"), f("z/w", null, "W"))).toEqual([
+      ["a", null, "A"],
+      ["b", "a", "B"],
+      ["b/x", "b", "X"],
+      ["a/y", "b", "Y"],
+      ["z/w", null, "W"],
+    ]);
+  });
+
+  it("names a top-level extract whose name is its id", () => {
+    expect(tidy(f("south-america", null))).toEqual([["south-america", null, "South America"]]);
   });
 });
 

@@ -6,7 +6,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 
 | Topic                  | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Level filter           | Levels are derived from tree depth. The default view is "smallest available" (leaf extracts). When a branch has no extract at the selected depth, the deepest available ancestor-level leaf is shown with a distinct "coarser" style. Depth logic is validated in an exploration phase and may get manual overrides.                                                                                                                                                                                                                                                                                                                                                                |
+| Level filter           | Levels are derived from tree depth. The default view is "smallest available" (leaf extracts). When a branch has no extract at the selected depth, the deepest available ancestor-level leaf is shown with a distinct "coarser" style. Phase 2 confirmed raw depth works once Russia is moved to depth 1, Geofabrik's US states are put under `us`, and bundle extracts (e.g. `dach`) are flagged and left out of level views.                                                                                                                                                                                                                                                                                                                                                                |
 | Download sizes         | Geofabrik: sizes parsed from each parent region's HTML page (rounded, e.g. "1.2 GB"), about 32 pages. HEAD requests on `.osm.pbf` were dropped because Geofabrik's robots.txt disallows `*.osm.pbf`. OSM-FR: sizes parsed from nginx directory listings (also rounded, e.g. `311M`). Sizes are estimates either way.                                                                                                                                                                                                                                                                                                                                                                |
 | Overlap in size totals | Not specially handled, since only one depth level is shown at a time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Geometry format        | Full-detail GeoJSON first. PMTiles only if performance testing shows a problem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -19,7 +19,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 | Deployment             | Two containers (static web server + updater) with a shared volume. No Coolify-specific features.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Politeness             | Rate-limited, conditional requests, request cache, recorded fixtures for development. User-Agent points to the public GitHub repo URL, never a personal email. Only paths allowed by each provider's robots.txt are fetched, with one deliberate exception: OSM-FR's robots.txt disallows everything, and the project owner chose to crawl it anyway using parameters that matched manual exploration. OSM-FR requests are kept to the minimum: 2s between requests, no retries (any error, 403, 429 or 5xx stops the run), listings and `.poly` files only, and no trees that aren't needed. No automatic updating from OSM-FR is planned unless permission can be obtained later. |
 | Security               | Provider data is untrusted: URLs and crawl links are checked against a provider host allowlist, and cache files are named by hash. The web server can reach only published releases, sends a CSP, and is reachable only through the proxy. Images are pinned and checksum-verified.                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Deferred features      | "What covers this point?" lookup, cross-provider compare view, pre-merged OSM-FR extracts, PMTiles.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Deferred features      | "What covers this point?" lookup, bundles and pre-merged OSM-FR extracts, PMTiles. A cross-provider compare view was dropped in phase 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Architecture
 
@@ -43,7 +43,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 
 - The app is built once into the `web` image. Data updates never require a rebuild or redeploy.
 - The HTTP cache lives in its own volume that only the updater mounts, so the web server can only ever reach published releases.
-- The browser loads the app shell, then fetches `/data/current/meta.json` and the data files it references.
+- The browser loads the app shell, then fetches `/data/meta.json` and the data files it references (nginx maps `/data/` to `current/`).
 
 ## Repository layout
 
@@ -80,8 +80,11 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── explore/              # one-off scripts (phase 0 recon, fixture trimming, phase 2 reports)
 │   └── config/
 │       ├── osmfr-exclude.json     # extra exclusions (merge/ is skipped by path)
-│       └── level-overrides.json   # manual depth fixes, if needed
+│       └── level-overrides.json   # depth overrides and bundle list (phase 2)
 ├── web/
+│   ├── vite.config.ts        # dev server also serves /data/ from data/current
+│   ├── tsconfig.json
+│   ├── debug.html            # phase 2 debug map (dev only)
 │   ├── index.html
 │   ├── src/…                 # React + TS + react-map-gl/maplibre
 │   └── public/
@@ -128,6 +131,7 @@ interface Extract {
   parentKey: string | null;
   depth: number;              // 0 = top level, after overrides
   isLeaf: boolean;
+  isBundle: boolean;          // repeats extracts also offered separately; left out of level views
   sizeBytes: number | null;   // null if unknown
   sizeCheckedAt: string | null;
   urls: {
@@ -165,7 +169,7 @@ Output files in each release directory:
 
 - `meta.json`: small, fetched first.
 - `extracts.json`: all `Extract` records, no geometry. Drives the sidebar, search, selection and totals.
-- `boundaries-<provider>.geojson`: one FeatureCollection per provider. Each feature has `key`, `depth`, `isLeaf` and `name` as properties (enough for map styling and filtering), plus the geometry.
+- `boundaries-<provider>.geojson`: one FeatureCollection per provider. Each feature has `key`, `depth`, `isLeaf`, `isBundle` and `name` as properties (enough for map styling and filtering), plus the geometry.
 
 Splitting by provider keeps each file smaller and lets the browser load providers in parallel.
 
@@ -188,7 +192,7 @@ All network access goes through one client:
 ### Geofabrik (`updater/providers/geofabrik.ts`)
 
 1. Conditional GET of `https://download.geofabrik.de/index-v1.json`. One request; a `304` means the boundaries are unchanged.
-2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Geometry comes from the feature itself. The page and `.poly` URLs are derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`, `….poly`); the `.poly` is linked, never fetched. A malformed index (bad JSON, missing fields, duplicate ids) fails the provider.
+2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Two index quirks are fixed first (phase 2): an id `<prefix>/<name>` whose prefix is a sibling extract is moved under that prefix (the index lists `us/alabama` beside `us`, under `north-america`, while Geofabrik's `us.html` lists the states), and a name equal to the id (`"us/alabama"`) is replaced by one derived from its last segment, using the OSM-FR name rules. Geometry comes from the feature itself. The page and `.poly` URLs are derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`, `….poly`); the `.poly` is linked, never fetched. A malformed index (bad JSON, missing fields, duplicate ids) fails the provider.
 3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (same table format, checked in phase 1), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Sizes are matched to extracts by `.pbf` URL, whichever page lists them (`russia` isn't on `index.html`, so it should come from another region page; not yet checked). Units are 1024-based: `canada.html` shows "6.1 GB" for a file of 6,514,753,096 bytes. Conditional GETs, since pages have ETags. A page that fails to load, or has no sizes in the expected format, is logged and its children get `sizeBytes: null`; it doesn't fail the provider. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
 4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Geofabrik's [technical page](https://download.geofabrik.de/technical.html) confirms one update per day for every extract. `state.txt` and `*updates*` are disallowed by robots.txt, so they are never fetched.
 
@@ -223,7 +227,10 @@ After each provider is mapped, set `replication.status` for every extract:
 
 - `depth` = number of ancestors (top-level entries are depth 0).
 - `isLeaf` = has no children within the same provider.
-- `config/level-overrides.json` maps `key → depth` for cases where raw depth gives a poor result (e.g. Geofabrik has `russia` at the top level alongside continents). This is expected to be a short list; phase 2 decides what goes in it.
+- `config/level-overrides.json` has two fields:
+  - `depth`: `key → depth` where raw depth gives a poor result; descendants follow. Currently `geofabrik:russia` and `osmfr:russia` → 1 (both providers list Russia beside the continents, but the Europe and Asia outlines already cover it). An override for a missing key is an error.
+  - `bundles`: keys of extracts that repeat others the provider also offers separately, listed beside them rather than as their parent (Geofabrik's `dach` beside Germany, Austria and Switzerland). They get `isBundle: true` and level views leave them out. A bundle missing from the data is logged, not an error, since providers drop bundles now and then and the config ships inside the image.
+- Bundles are picked by hand from the phase 2 overlap check, and only where their parts cover the same land (checked by sampling points). Some bundles reach further out to sea than their parts (e.g. `us-west` off the Pacific coast), so hiding them leaves bits of open sea uncovered in the level views. That's acceptable, since there is little OSM data there. A future "what covers this point?" lookup should still include bundles. Geofabrik: `alps`, `britain-and-ireland`, `dach`, `great-britain`, `sea`, `south-africa-and-lesotho`, `us-midwest`, `us-northeast`, `us-south`, `us-west`. OSM-FR: `asia/israel_and_palestine`, `asia/india/dadra_and_nagar_haveli_and_daman_and_diu`. OSM-FR's `asia/indonesia/papua` overlaps the newer Papua provinces but also covers today's Papua, which has no other extract, so it isn't a bundle.
 
 ### Validation (`updater/validate.ts`)
 
@@ -277,8 +284,8 @@ At container start, `web-entrypoint.sh` writes `config.json` (`{ "maptilerKey": 
 For each provider: a GeoJSON source, a line layer, a fill layer for hover/selection, and a line layer for the selected outline.
 
 - **Provider colours:** two colourblind-safe hues, also told apart by line pattern (e.g. solid vs. slightly offset with `line-offset`), so overlapping outlines stay legible when both providers are shown.
-- **Fills:** none by default (so overlap doesn't get muddy), a faint fill on hover and a stronger fill when selected.
-- **Level filter** (applied with a MapLibre `filter` expression on `depth`/`isLeaf`, with no data reload):
+- **Fills:** none by default (so overlap doesn't get muddy), a faint fill on hover and a stronger fill when selected. Hover and selection use MapLibre feature state (`promoteId: "key"` on each source), not layer filters: changing a filter rebuilds the layer, which lagged behind the cursor in the phase 2 debug map, while feature state only repaints. Hover is also debounced slightly (about 60 ms).
+- **Level filter** (applied with a MapLibre `filter` expression on `depth`/`isLeaf`/`isBundle`, with no data reload; bundles are always left out until phase 6 decides how to show them):
   - Level *d* shows features where `depth == d`, plus features where `depth < d && isLeaf` in the **coarser** style (dashed line, lower opacity). This is the fallback for branches with no extract at depth *d*.
   - "Smallest available" (the default) shows every leaf, in the normal style.
 - **Labels:** extract names at a sensible zoom, using symbol placement on polygon centroids. Decide in phase 3 whether these help or add clutter.
@@ -287,7 +294,7 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 
 - **Header:** site name, one-line explanation, and prominent links to https://www.geofabrik.de/ and https://www.openstreetmap.fr/.
 - **Provider toggle:** Geofabrik / OSM-FR / Both (default Both).
-- **Level selector:** Smallest available (default) / Continent / Country / Region / Sub-region. The labels map to depth 0–3; phase 2 may adjust them. A legend explains the coarser style.
+- **Level selector:** Smallest available (default) / Continent / Country / Region / Sub-region, mapping to depth 0–3 (confirmed in phase 2). A legend explains the coarser style.
 - **Search box:** filters the visible extracts by name.
 - **Extract list:** visible extracts sorted by name or size. This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
 - **Selection panel:**
@@ -406,7 +413,7 @@ Coverage thresholds are set to 100% for `updater/**` and `shared/**`. Only two t
   - extracts without polygons, and polygons without extracts, are logged and not fatal;
   - replication intervals detected from listings.
 - **Replication status:** table-driven tests for `expected` / `differs` / `none`, including "expected interval plus others".
-- **Levels:** depth and leaf computation; overrides applied; an override pointing to a missing key is an error.
+- **Levels:** depth and leaf computation; overrides applied; an override pointing to a missing key is an error; bundles flagged, and a missing bundle is reported, not an error.
 - **Validation:** each rule passes and fails on its own, including `javascript:`, `data:`, `http:` and off-host URLs being rejected; one provider failing reuses the previous data marked `stale`; both failing keeps the current release; providers not requested are carried over unchanged (and left out if the previous release lacks them); a plain run never makes OSM-FR requests.
 - **Release:** runs against a real temporary directory. Covers writing, the atomic symlink swap, pruning to 3 releases, and a failure mid-write leaving `current` untouched.
 - **Pipeline:** `runUpdate()` in offline mode over the committed fixture subset produces output that matches committed golden files (`fixtures/expected/`). Output changes then show up as a reviewable diff.
@@ -553,6 +560,31 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 
 **Exit:** the level rules are written into this plan; the override list is in place; GeoJSON sizes are known.
 
+#### Phase 2 results (2026-11-06)
+
+Done. `node updater/explore/levels-report.ts [releaseDir] [outFile]` writes the report; the current output is [levels-report.md](levels-report.md). `npm run dev` serves the debug map at `http://localhost:5173/debug.html` (provider toggles, each depth or "smallest available", the coarser fallback dashed, bundles on request, hover details, load timing). It uses the MapTiler key from `web/public/config.json` (gitignored) if there is one, otherwise MapLibre's keyless demo style.
+
+Findings:
+
+- **Depth lines up across providers.** Canadian provinces, US states, German Länder, French regions and Russian federal districts are all at depth 2 in both providers (after the fixes below). Depth 3 is sub-regions: Quebec regions, French départements, Regierungsbezirke, Russian oblasts (OSM-FR), US counties and state regions (OSM-FR).
+- **Russia** is top level in both providers, beside the continents. Moved to depth 1 by override; the Europe and Asia outlines cover it, so the continent view has no gap.
+- **Geofabrik's US states** sat under `north-america` beside `us` and drew on top of it. Fixed structurally in the provider (see the Geofabrik section), which also fixed their names. `us` is now a parent, and `us.html` becomes one of the size pages (32 in all).
+- **Bundles:** an overlap check (leaves containing other leaves of the same provider) found Geofabrik's combined extracts drawing over their parts in the leaf and country views. They are flagged and left out (see Levels). The remaining overlaps are enclaves, such as Berlin in Brandenburg or Vatican City in Lazio, which are real separate extracts and stay.
+- **OSM-FR's US** has no single country extract; at country level it shows the four US regions (Midwest, Northeast, South, West), which is the coarsest it offers.
+- **Compare view: not needed.** Both providers mostly mean the same thing at the same depth, and both layers together were readable enough on the debug map. Removed from phase 6.
+- **Reviewed on the debug map:** the overlaps left in "smallest available" look like provider choices (enclaves and similar), not missed bundles. Load performance is good.
+
+Counts after the fixes (bundles excluded; "all / leaves"):
+
+| Provider | Depth 0 | Depth 1 | Depth 2 | Depth 3 | Bundles |
+| --- | --- | --- | --- | --- | --- |
+| Geofabrik | 8 / 1 | 194 / 176 | 268 / 261 | 74 / 74 | 10 |
+| OSM-FR | 7 / 0 | 197 / 156 | 564 / 504 | 426 / 426 | 2 |
+
+Boundary sizes (full detail, unchanged from phase 1): Geofabrik 2.9 MB raw / 1.1 MB gzipped, 554 features, 146,050 vertices; OSM-FR 6.3 MB / 1.6 MB, 1,196 features, 416,182 vertices; largest single feature about 2,400 vertices. About 2.7 MB gzipped for both providers is likely fine; the phase 3 performance check decides.
+
+Other changes: `SCHEMA_VERSION` is now 2 (the `isBundle` field), so a version 1 release isn't carried over; rebuild with `npm run update-data -- --offline --providers geofabrik,osmfr`. The pipeline fixtures now include OSM-FR's `russia` → Northwestern Federal District → Kaliningrad Oblast to cover the depth override. The web libraries are devDependencies, since Vite bundles them and the updater image installs with `--omit=dev`.
+
 ### Phase 3: frontend MVP
 
 - Map, provider toggle, level selector with coarser-fallback styling, hover, click selection with the overlap picker, selection panel with totals, badges, copy buttons, provider links, attribution and last-updated footer.
@@ -579,8 +611,7 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 ### Phase 6: optional features (decide individually)
 
 - **"What covers this point?"** Click or geocode a location to list every extract containing it, from both providers and across all depths, sorted by size. It uses `queryRenderedFeatures` or a client-side point-in-polygon test over all features.
-- **Pre-merged OSM-FR extracts:** decide whether to show them, perhaps as a separate toggle outside the level hierarchy.
-- **Cross-provider compare view**, if phase 2 shows it's needed.
+- **Bundles and pre-merged OSM-FR extracts:** decide whether to show them, perhaps as a separate toggle outside the level hierarchy. Geofabrik and OSM-FR bundles are already in the data (`isBundle`); OSM-FR's `merge/` isn't fetched.
 - **PMTiles**, only if phase 3 shows a performance problem that simplification doesn't fix.
 
 ## Open items to resolve during implementation
@@ -588,7 +619,7 @@ Goal: decide whether raw depth works as a level, and see how heavy the GeoJSON i
 - **OSM-FR access:** due to robots.txt, the owner chose to limit requests to those matching manual exploration (2026-11-06). No automatic updating of OSM-FR is planned without permission.
 - ~~Geofabrik `index.html` size format for top-level extracts (phase 1).~~ *Same format as region pages.*
 - Which Geofabrik page lists `russia`'s size (it isn't on `index.html`); check after the first online run.
-- Final level labels and override list (phase 2).
+- ~~Final level labels and override list (phase 2).~~ *See Levels and the phase 2 results.*
 - ~~Confirm OSM-FR's default replication interval.~~ *Minutely (phase 0). Geofabrik's is daily.*
 - Whether to show merged extracts (phase 6).
 - ~~How to derive OSM-FR display names from directory names (phase 1).~~ *See the OSM-FR section.*

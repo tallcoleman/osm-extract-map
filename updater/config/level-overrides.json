@@ -1,1 +1,20 @@
-{}
+{
+  "depth": {
+    "geofabrik:russia": 1,
+    "osmfr:russia": 1
+  },
+  "bundles": [
+    "geofabrik:alps",
+    "geofabrik:britain-and-ireland",
+    "geofabrik:dach",
+    "geofabrik:great-britain",
+    "geofabrik:sea",
+    "geofabrik:south-africa-and-lesotho",
+    "geofabrik:us-midwest",
+    "geofabrik:us-northeast",
+    "geofabrik:us-south",
+    "geofabrik:us-west",
+    "osmfr:asia/india/dadra_and_nagar_haveli_and_daman_and_diu",
+    "osmfr:asia/israel_and_palestine"
+  ]
+}

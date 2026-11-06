@@ -84,7 +84,7 @@ describe("runUpdate", () => {
     expect(result.meta).toEqual(meta);
     expect(meta).toEqual({
       generatedAt: expect.any(String),
-      schemaVersion: 1,
+      schemaVersion: 2,
       providers: {
         geofabrik: { extractCount: 3, fetchedAt: "2026-11-05T00:00:00.000Z", status: "ok" },
         osmfr: { extractCount: 2, fetchedAt: "2026-11-04T00:00:00.000Z", status: "ok" },
@@ -103,17 +103,30 @@ describe("runUpdate", () => {
     ]);
     const osmfrBoundaries = await boundaries("osmfr");
     expect(osmfrBoundaries.features.map((f) => f.properties)).toEqual([
-      { key: "osmfr:europe", depth: 0, isLeaf: false, name: "europe" },
-      { key: "osmfr:europe/zug", depth: 1, isLeaf: true, name: "europe/zug" },
+      { key: "osmfr:europe", depth: 0, isLeaf: false, isBundle: false, name: "europe" },
+      { key: "osmfr:europe/zug", depth: 1, isLeaf: true, isBundle: false, name: "europe/zug" },
     ]);
     expect(osmfrBoundaries.features[0]!.geometry).toEqual(square);
   });
 
   it("applies level overrides for each provider", async () => {
-    const d = deps({ fetchers: { geofabrik: ok(geofabrik()) }, levelOverrides: { "geofabrik:russia": 1, "osmfr:europe": 3 } });
+    const levelOverrides = {
+      depth: { "geofabrik:russia": 1, "osmfr:europe": 3 },
+      bundles: ["geofabrik:monaco", "osmfr:europe/zug"],
+    };
+    const d = deps({ fetchers: { geofabrik: ok(geofabrik()) }, levelOverrides });
     await runUpdate(d);
-    const { extracts } = await readRelease();
+    const { extracts, boundaries } = await readRelease();
     expect(extracts.find((e) => e.key === "geofabrik:russia")!.depth).toBe(1);
+    expect(extracts.filter((e) => e.isBundle).map((e) => e.key)).toEqual(["geofabrik:monaco"]);
+    expect((await boundaries("geofabrik")).features.find((f) => f.properties.key === "geofabrik:monaco")!.properties.isBundle).toBe(true);
+    expect(d.logger.find("bundles in level-overrides.json not found")).toHaveLength(0);
+  });
+
+  it("warns about bundles that aren't in the data, and still publishes", async () => {
+    const d = deps({ fetchers: { geofabrik: ok(geofabrik()) }, levelOverrides: { depth: {}, bundles: ["geofabrik:alps"] } });
+    expect((await runUpdate(d)).published).toBe(true);
+    expect(d.logger.find("Geofabrik: bundles in level-overrides.json not found: geofabrik:alps")).toHaveLength(1);
   });
 
   it("never calls a provider that wasn't requested, and carries it over unchanged", async () => {
@@ -178,7 +191,7 @@ describe("runUpdate", () => {
   });
 
   it("treats a bad level override as a validation failure", async () => {
-    const result = await runUpdate(deps({ fetchers: { geofabrik: ok(geofabrik()) }, levelOverrides: { "geofabrik:atlantis": 1 } }));
+    const result = await runUpdate(deps({ fetchers: { geofabrik: ok(geofabrik()) }, levelOverrides: { depth: { "geofabrik:atlantis": 1 }, bundles: [] } }));
     expect(result).toMatchObject({ published: false, reason: 'level override for missing extract "geofabrik:atlantis"' });
   });
 

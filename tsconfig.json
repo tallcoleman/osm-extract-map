@@ -13,5 +13,5 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true
   },
-  "include": ["updater", "shared", "vitest.config.ts", "test"]
+  "include": ["updater", "shared", "vitest.config.ts", "test", "web/vite.config.ts"]
 }

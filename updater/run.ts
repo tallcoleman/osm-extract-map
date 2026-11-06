@@ -20,7 +20,7 @@ import {
   SCHEMA_VERSION,
 } from "../shared/schema.ts";
 import type { Logger } from "./http.ts";
-import { computeLevels, LevelError, type LevelOverrides, overridesFor } from "./levels.ts";
+import { computeLevels, LevelError, type LevelOverrides, NO_OVERRIDES, overridesFor } from "./levels.ts";
 import type { ProviderData } from "./providers/types.ts";
 import { publishRelease, readCurrentRelease } from "./release.ts";
 import { replicationStatus } from "./replication.ts";
@@ -84,13 +84,17 @@ export async function acquireLock(dataDir: string, now: Date, logger: Logger): P
   return () => rm(file, { force: true });
 }
 
-/** Sets depth, leaf and replication status, and builds the boundary collection. */
+/** Sets depth, leaf, bundle and replication status, and builds the boundary collection. */
 export function finalizeProvider(
   provider: ProviderId,
   data: ProviderData,
   overrides: LevelOverrides,
+  logger: Logger,
 ): { extracts: Extract[]; boundaries: BoundaryCollection } {
-  const levels = computeLevels(data.extracts, overridesFor(overrides, provider));
+  const { levels, missingBundles } = computeLevels(data.extracts, overridesFor(overrides, provider));
+  if (missingBundles.length > 0) {
+    logger.warn(`${PROVIDERS[provider].name}: bundles in level-overrides.json not found: ${missingBundles.join(", ")}`);
+  }
   const expected = PROVIDERS[provider].expectedInterval;
   const extracts = data.extracts
     .map((e): Extract => {
@@ -99,6 +103,7 @@ export function finalizeProvider(
         ...e,
         depth: level.depth,
         isLeaf: level.isLeaf,
+        isBundle: level.isBundle,
         replication: { ...e.replication, status: replicationStatus(e.replication.intervals, expected) },
       };
     })
@@ -107,7 +112,7 @@ export function finalizeProvider(
     type: "FeatureCollection",
     features: extracts.map((e) => ({
       type: "Feature",
-      properties: { key: e.key, depth: e.depth, isLeaf: e.isLeaf, name: e.name },
+      properties: { key: e.key, depth: e.depth, isLeaf: e.isLeaf, isBundle: e.isBundle, name: e.name },
       geometry: data.geometries.get(e.key)!,
     })),
   };
@@ -117,7 +122,7 @@ export function finalizeProvider(
 export async function runUpdate(deps: RunDeps): Promise<RunResult> {
   const { dataDir, logger } = deps;
   const now = deps.now ?? (() => new Date());
-  const overrides = deps.levelOverrides ?? {};
+  const overrides = deps.levelOverrides ?? NO_OVERRIDES;
   for (const p of deps.providers) {
     if (!deps.fetchers[p]) throw new Error(`No fetcher for provider "${p}"`);
   }
@@ -161,7 +166,7 @@ export async function runUpdate(deps: RunDeps): Promise<RunResult> {
       let result: ReturnType<typeof finalizeProvider>;
       try {
         const valid = validateProvider(p, data, prevMeta?.extractCount ?? null, logger);
-        result = finalizeProvider(p, valid, overrides);
+        result = finalizeProvider(p, valid, overrides, logger);
       } catch (error) {
         if (!(error instanceof ValidationError || error instanceof LevelError)) throw error;
         logger.warn(`Validation failed, keeping the current release: ${error.message}`);

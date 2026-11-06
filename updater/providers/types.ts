@@ -1,7 +1,7 @@
 import type { BoundaryGeometry, Extract } from "../../shared/schema.ts";
 
 /** An extract as a provider reports it, before levels and replication status are set. */
-export interface ExtractDraft extends Omit<Extract, "depth" | "isLeaf" | "replication"> {
+export interface ExtractDraft extends Omit<Extract, "depth" | "isLeaf" | "isBundle" | "replication"> {
   replication: Omit<Extract["replication"], "status">;
 }
 

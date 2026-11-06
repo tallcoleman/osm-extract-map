@@ -5,6 +5,7 @@
 
 import { type BoundaryGeometry, PROVIDERS } from "../../shared/schema.ts";
 import { HttpError, type HttpClient, type Logger } from "../http.ts";
+import { displayName } from "./osmfr.ts";
 import { type ExtractDraft, type ProviderData, ProviderFormatError } from "./types.ts";
 
 export const GEOFABRIK_INDEX_URL = "https://download.geofabrik.de/index-v1.json";
@@ -21,7 +22,7 @@ export interface GeofabrikOptions {
   logger: Logger;
 }
 
-interface IndexFeature {
+export interface IndexFeature {
   id: string;
   parent: string | null;
   name: string;
@@ -80,6 +81,25 @@ export function parseSizePage(html: string, pageUrl: string): Map<string, number
   return sizes;
 }
 
+/**
+ * Fixes two quirks of index-v1.json, both seen on US states:
+ * - "us/alabama" has parent "north-america" (beside "us", not under it), while
+ *   Geofabrik's own us.html lists the states. An id "<prefix>/<name>" whose
+ *   prefix is a sibling extract is moved under that prefix.
+ * - Most states have the id as their name ("us/alabama"). A name equal to the
+ *   id is replaced with one derived from its last segment ("Alabama").
+ */
+export function tidyIndex(features: IndexFeature[]): IndexFeature[] {
+  const parentOf = new Map(features.map((f) => [f.id, f.parent]));
+  return features.map((f) => {
+    const slash = f.id.lastIndexOf("/");
+    const prefix = f.id.slice(0, slash);
+    const parent = slash > 0 && parentOf.has(prefix) && parentOf.get(prefix) === f.parent ? prefix : f.parent;
+    const name = f.name === f.id ? displayName(f.id.slice(slash + 1)) : f.name;
+    return { ...f, parent, name };
+  });
+}
+
 /** The .pbf URL with "-latest.osm.pbf" replaced, or null if it doesn't end that way. */
 function sibling(pbf: string, suffix: string): string | null {
   return pbf.endsWith(PBF_SUFFIX) ? pbf.slice(0, -PBF_SUFFIX.length) + suffix : null;
@@ -115,7 +135,7 @@ export async function fetchGeofabrik(http: HttpClient, options: GeofabrikOptions
   const { logger } = options;
   const res = await http.get(GEOFABRIK_INDEX_URL);
   if (res.status !== 200) throw new HttpError("bad-status", GEOFABRIK_INDEX_URL, `Expected 200, got ${res.status}`, res.status);
-  const features = parseIndex(res.body.toString("utf8"));
+  const features = tidyIndex(parseIndex(res.body.toString("utf8")));
 
   const ids = new Set<string>();
   for (const f of features) {

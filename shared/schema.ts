@@ -1,6 +1,6 @@
 // Data types shared by the updater and the web app.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type ProviderId = "geofabrik" | "osmfr";
 
@@ -60,6 +60,8 @@ export interface Extract {
   /** 0 = top level, after overrides. */
   depth: number;
   isLeaf: boolean;
+  /** Repeats extracts the provider also offers separately (e.g. Geofabrik's "dach"); left out of level views. */
+  isBundle: boolean;
   /** Estimated download size; null if unknown. */
   sizeBytes: number | null;
   sizeCheckedAt: string | null;
@@ -101,6 +103,7 @@ export interface BoundaryProperties {
   key: string;
   depth: number;
   isLeaf: boolean;
+  isBundle: boolean;
   name: string;
 }
 
