@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Two overlapping extract outlines in the provider colours (web/src/lib/providers.ts).
+       favicon.ico and apple-touch-icon.png are rendered from this file; see docs/implementation-plan.md. -->
+  <rect width="32" height="32" rx="7" fill="#ffffff"/>
+  <rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="#0072b2" stroke-width="4"/>
+  <rect x="12" y="12" width="16" height="16" rx="2" fill="none" stroke="#b84a00" stroke-width="4"/>
+</svg>

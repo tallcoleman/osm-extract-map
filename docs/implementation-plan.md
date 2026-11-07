@@ -95,7 +95,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   │   ├── components/       # MapView, ExtractList, SelectionPanel, Header, controls…
 │   │   ├── lib/              # pure logic: levels, search, selection, badges, safeHref, load…
 │   │   └── test/             # react-map-gl mock, test data, axe helper
-│   └── public/               # config.json (gitignored) in development
+│   └── public/               # icons; config.json (gitignored) in development
 ├── fixtures/                 # small committed fixtures for unit tests
 │   ├── pipeline/             # small self-consistent provider "site" for the pipeline test
 │   └── expected/             # golden output files for the pipeline test
@@ -304,6 +304,7 @@ Vite + React + TypeScript + `react-map-gl/maplibre`. No state library; React sta
 At container start, `web-entrypoint.sh` writes `config.json` (`{ "maptilerKey": "…" }`) from the `MAPTILER_KEY` env var. The app fetches it on load. The key can then change without rebuilding the image. In development, Vite serves a local `config.json` that is gitignored.
 
 - The entrypoint builds the JSON with `jq -n --arg k "$MAPTILER_KEY" '{maptilerKey: $k}'`, not string interpolation, so the value is always escaped correctly.
+- The same entrypoint writes the served `index.html` from an untouched copy of the build's (`/usr/share/nginx/index.template.html`, outside the web root) at every start. If `SITE_URL` is set, it adds `og:url`, `og:image` (`/og-image.png`) with its size and alt text, and switches the Twitter card to `summary_large_image`; these need absolute URLs, so they can't be in the build. `SITE_URL` must be a plain `http(s)` URL (letters, digits, `.`, `-`, `_`, `~`, `/` and a port), which keeps it safe in `sed` and in an HTML attribute; anything else is logged and left out, as is an unset value. `web/src/index-html.test.ts` checks that `index.html` still has the lines the `sed` edits.
 - The key is public by design: every visitor can read it. In the MapTiler dashboard, restrict the production key to the production origin, and use a separate key for development restricted to `localhost`.
 
 ### Map layers
@@ -401,7 +402,7 @@ This is plain Docker; any host, including Coolify's terminal, can run it. A run 
 
 - Two services and two named volumes: `data` (releases, shared) and `cache` (updater only).
 - `web` uses `expose: ["80"]`, not `ports`, so it isn't published on the host and is only reachable through the reverse proxy. TLS and the domain are handled by that proxy (Coolify's in production). For local testing, a `compose.override.yaml` can add a `ports` mapping bound to `127.0.0.1`.
-- Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE`, `REQUEST_INTERVAL_MS` (Geofabrik only, since OSM-FR always uses at least 2s) and `UPDATE_MAX_AGE_DAYS` (updater).
+- Env vars: `MAPTILER_KEY` and `SITE_URL` (web); `CRON_SCHEDULE`, `REQUEST_INTERVAL_MS` (Geofabrik only, since OSM-FR always uses at least 2s) and `UPDATE_MAX_AGE_DAYS` (updater).
 - Healthchecks: `web` fetches `/` with busybox `wget`. `updater` runs `docker/updater-healthcheck.mjs`, which is unhealthy when nothing is published, Geofabrik's `status` isn't `ok`, or its `fetchedAt` is older than `UPDATE_MAX_AGE_DAYS` (default 8: weekly plus a day). OSM-FR isn't checked, since it's manual. The updater's 10-minute start period (checked every 15 s) covers the first run on an empty volume. Docker only reports health; nothing restarts an unhealthy container.
 
 ## Testing
@@ -491,6 +492,8 @@ Run after major frontend or deployment changes (last run against production on 2
 - [x] `web` isn't reachable on the host's public IP, only through the proxy.
 - [x] The production MapTiler key is restricted to the production origin.
 - [x] `/debug.html` returns 404 in production (the debug map is dev only).
+- [ ] The favicon shows in the browser tab, and `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` and `/og-image.png` return 200 with the security headers (added in phase 5).
+- [ ] `SITE_URL` is set, the page source has `og:url` and `og:image` with the production URL, and a pasted link shows the preview card.
 
 ### Keeping fixtures honest
 
@@ -733,6 +736,12 @@ VoiceOver pass by the owner (2026-11-07):
 
 - Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast; extends the automated tests with a manual screen reader run), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule: Geofabrik weekly, OSM-FR occasionally), empty/error states (data failed to load, stale provider), favicon and meta tags.
 - Carried over from phase 4: start MapLibre's compact attribution collapsed on phones (it starts expanded and covers the bottom of the short map). The phase 4 VoiceOver pass covers the main flow; repeat it after the bottom sheet and about modal.
+
+The task breakdown is in [phase-5-tasks.md](phase-5-tasks.md).
+
+#### Phase 5 results (in progress)
+
+- **Favicon and meta tags (task 1):** `web/public/favicon.svg` is the source: two overlapping outlines in the provider colours on a white tile, with strokes on whole pixels so it stays sharp at 16 px. `favicon.ico` (16 and 32 px, for clients that still request it) and `apple-touch-icon.png` (180 px, opaque, since iOS doesn't use SVG icons) are rendered from it: `rsvg-convert -w 16 -h 16 favicon.svg -o 16.png`, the same at 32, `magick 16.png 32.png favicon.ico`, and `rsvg-convert -w 180 -h 180 -b '#ffffff' favicon.svg | magick - -alpha off apple-touch-icon.png`. `index.html` adds `theme-color` (white; the site doesn't need a dark mode), Open Graph title and description, and a `summary` Twitter card. `og:url` and `og:image` need absolute URLs, so the web entrypoint adds them from the new `SITE_URL` env var (see Runtime config). The image is a 1200×630 card with the icon and site name, `web/public/og-image.png`, rendered from `web/icons/og-image.svg` with `rsvg-convert web/icons/og-image.svg | magick - -alpha off web/public/og-image.png` (the text uses this Mac's Helvetica, so re-rendering elsewhere may change the font). `web/src/index-html.test.ts` checks that the linked icons and card exist, the preview text matches the page's title and description, and the lines the entrypoint edits are there. Checked with `npm run preview` in headless Chrome: no console errors and no `/favicon.ico` request. In the built `web` image, nginx serves all three with the right content type, the security headers and `Cache-Control: no-cache`, and the CSP blocks nothing. With `SITE_URL` set (trailing slash or not), the container's `index.html` has the absolute `og:url` and `og:image` and a `summary_large_image` card, with no duplicates after a restart; unset or invalid (`javascript:…`), it has neither and logs why. Still to do in production: set `SITE_URL` in Coolify, then the release checklist.
 
 ### Phase 6: optional features (decide individually)
 
