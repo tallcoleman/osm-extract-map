@@ -1,7 +1,5 @@
 # Phase 5 Tasks: Polish
 
-> **Draft:** not yet reviewed. Scope, order and success criteria may change before phase 5 starts.
-
 This breaks down [Phase 5](implementation-plan.md#phase-5-polish) of the implementation plan into tasks. Each task says what problem it solves, what work or exploration it needs, and what done looks like. The site is live (phase 4), so every task ends with a deploy and a check against production.
 
 Suggested order: the smaller, independent tasks first (favicon and meta tags, attribution, empty and error states), then the about modal and bottom sheet, then the accessibility pass, which has to come after both because it re-tests them. The wrap-up task closes the phase.
@@ -25,11 +23,11 @@ Suggested order: the smaller, independent tasks first (favicon and meta tags, at
 
 **Work:**
 
-- Find out how MapLibre 6 and `react-map-gl` decide the initial compact state, and whether there's a supported option to start collapsed. If not, the likely fix is removing the `maplibregl-compact-show` class once the map loads, which needs a test against the mocked map and a by-hand check, since it depends on MapLibre internals.
-- Check the OpenStreetMap Foundation attribution guidelines and MapTiler's terms for what they require on first view. If credits must be visible at first, collapse after a few seconds instead of straight away.
+- Change the allocation of map:controls space to 50:50 instead of 40:60
+- Leave the existing attribution control behaviour unchanged
 - Make sure the control still collapses or expands correctly when the window is resized across the 768 px breakpoint.
 
-**Done when:** at phone widths the attribution starts collapsed (or collapses after the allowed delay) and opens with its info button; desktop is unchanged; all credits still appear once each when expanded; the approach is recorded in the plan's Attribution section.
+**Done when:** space allocation on mobile is updated; desktop is unchanged; the approach is recorded in the plan's Attribution section.
 
 ## 3. Empty and error states
 
@@ -66,11 +64,11 @@ Suggested order: the smaller, independent tasks first (favicon and meta tags, at
 
 ## 5. Mobile bottom sheet
 
-**Problem:** Below 768 px the map takes a fixed top 40% of the screen and the sidebar scrolls underneath. It works, but the map is small, and there's no way to give the map more room when exploring, or the list more room when searching. The plan calls for a draggable bottom sheet with collapsed, half and full positions.
+**Problem:** Below 768 px the map takes a fixed top half of the screen (50:50 after task 2) and the sidebar scrolls underneath. It works, but the split is fixed: there's no way to give the map more room when exploring, or the list more room when searching. The plan calls for a draggable bottom sheet with collapsed, half and full positions.
 
 **Work:**
 
-- First check whether the sheet is still the right design, given the phase 4 phone fixes (fixed `40svh` map, no overscroll bounce). Sketch how it changes the main phone flow: tap a polygon, see it selected, copy its URL. If the current layout turns out good enough, record that decision in the plan instead.
+- First check whether the sheet is still the right design, given the phase 4 phone fixes (fixed-height `svh` map, no overscroll bounce) and the larger 50:50 map from task 2. Do task 2 first and use the 50:50 layout on a real phone for a while as the baseline. Sketch how a sheet would change the main phone flow: tap a polygon, see it selected, copy its URL. If the 50:50 layout turns out good enough, record that decision in the plan instead.
 - Decide whether the sheet overlays a full-height map (no map resize while dragging, so no redraws; the visible map area changes instead) or resizes it (simpler for the overlap picker and attribution, but MapLibre has to resize on every change). Overlaying is likely better, given the redraw problem phase 4 fixed.
 - Build or choose the drag behaviour. A small pointer-events implementation is probably enough and avoids a dependency; if a library is used, pin a release at least two weeks old. Handle drag versus inner scroll (the list scrolls inside the sheet only when it's full), snap points, velocity flicks, iOS Safari toolbars and safe areas, and `prefers-reduced-motion`.
 - Make it accessible: the drag handle is a button (at least 44 px) that cycles positions with a clear accessible name and state; positions can be changed without dragging; content in the collapsed sheet isn't reachable by keyboard or screen reader when hidden.
@@ -100,7 +98,7 @@ Suggested order: the smaller, independent tasks first (favicon and meta tags, at
 
 **Work:**
 
-- Run the release checklist against production after the last deploy, adding items for the new pieces (favicon, collapsed attribution on phones, about modal, bottom sheet, error states).
+- Run the release checklist against production after the last deploy, adding items for the new pieces (favicon, the 50:50 phone layout, about modal, bottom sheet, error states).
 - Add a "Phase 5 results" section to the implementation plan, and update the sections the work changed (Controls, Attribution, Accessibility and mobile, the repository layout if files were added).
 - Note anything deferred to phase 6 or later.
 
