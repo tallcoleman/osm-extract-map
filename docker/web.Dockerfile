@@ -8,7 +8,11 @@ ARG NGINX_IMAGE=nginx:1.30.6-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --no-audit --no-fund
+# npm skips an optional platform package quietly if its download fails, and the
+# broken layer would then be cached. Loading each native tool here fails the step instead.
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+ && node -e 'require("lightningcss"); require("rolldown")' \
+ && npx tsc -v && npx oxlint --version
 
 # Same test stage as updater.Dockerfile: a failing check or test blocks the build.
 FROM deps AS test

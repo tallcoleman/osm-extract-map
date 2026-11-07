@@ -685,6 +685,8 @@ Checked with a local `docker compose up` (arm64, on fresh volumes):
 - Headers, cache rules, gzip and MIME types as planned (`curl -I`). `/data../`, `/data`, `/data/releases/`, `/data/%2e%2e/…`, `/debug.html` and `/src/main.tsx` return 404; `/data/` returns 403 (no autoindex).
 - Headless Chrome against the container: the map renders, the attribution reads "Geofabrik extracts | © MapTiler © OpenStreetMap contributors", OSM-FR shows "no data yet", and the console has no CSP violations. The only error is `/favicon.ico` (phase 5).
 - Bug found and fixed on the way: MapLibre's worker `.mjs` was served as `application/octet-stream`, which `nosniff` would have blocked in production (see Deployment).
+- First Coolify deploy (amd64) failed in the test stage: the pipeline golden-file test takes about 1 s natively but over 5 s (vitest's default limit) on a slower or emulated amd64 build, so it now has a 60 s limit. Every other test stays under about 1 s there. Reproduced and checked with `docker buildx build --platform linux/amd64`.
+- One amd64 `npm ci` quietly left out `lightningcss-linux-x64-musl` (npm skips an optional platform package whose install fails), so `vite build` failed. The lock file is fine and clean installs had it, but a cached broken layer would keep failing, so the install step now loads lightningcss, rolldown, tsc and oxlint and fails if any is missing.
 
 Still to do (needs the owner's accounts):
 

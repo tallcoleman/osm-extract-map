@@ -42,7 +42,9 @@ function formatGaps(text: string): string {
   return `{"type":"FeatureCollection","features":[\n${fc.features.map((f) => JSON.stringify(f)).join(",\n")}\n]}\n`;
 }
 
-it("builds the expected release from recorded fixtures", async () => {
+// The whole pipeline, coverage gaps included, takes about 1 s here but over 5 s
+// (vitest's default limit) on a slow or emulated amd64 Docker build.
+it("builds the expected release from recorded fixtures", { timeout: 60_000 }, async () => {
   // Record the fixture site into an empty cache, then build offline from it.
   const recorder = new HttpClient({
     cacheDir: cache.dir,

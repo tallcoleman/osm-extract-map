@@ -6,7 +6,11 @@ ARG NODE_IMAGE=node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --no-audit --no-fund
+# npm skips an optional platform package quietly if its download fails, and the
+# broken layer would then be cached. Loading each native tool here fails the step instead.
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+ && node -e 'require("lightningcss"); require("rolldown")' \
+ && npx tsc -v && npx oxlint --version
 
 # Same test stage as web.Dockerfile: a failing check or test blocks the build.
 FROM deps AS test
