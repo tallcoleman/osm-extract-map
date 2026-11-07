@@ -11,6 +11,14 @@ services:
     volumes:
       - data:/srv/data:ro
     restart: unless-stopped
+    # The app shell is served. Data freshness is the updater's healthcheck.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
 
   updater:
     build:
@@ -20,10 +28,22 @@ services:
       CRON_SCHEDULE: ${CRON_SCHEDULE:-0 3 * * 1}
       # Geofabrik only; OSM-FR always waits at least 2 s between requests.
       REQUEST_INTERVAL_MS: ${REQUEST_INTERVAL_MS:-1000}
+      # Healthcheck: unhealthy if Geofabrik wasn't checked successfully within this
+      # many days. Raise it if CRON_SCHEDULE runs less often than weekly.
+      UPDATE_MAX_AGE_DAYS: ${UPDATE_MAX_AGE_DAYS:-8}
     volumes:
       - data:/data
       - cache:/cache
     restart: unless-stopped
+    # Healthy while the published Geofabrik data is fresh and "ok". The start
+    # period covers the first run on an empty volume.
+    healthcheck:
+      test: ["CMD", "node", "/usr/local/lib/updater-healthcheck.mjs"]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 10m
+      start_interval: 15s
 
 volumes:
   data:

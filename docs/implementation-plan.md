@@ -106,7 +106,8 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── nginx.conf
 │   ├── security-headers.conf # included in every nginx location
 │   ├── updater.Dockerfile
-│   └── updater-entrypoint.sh # first run if no release yet, then supercronic
+│   ├── updater-entrypoint.sh # first run if no release yet, then supercronic
+│   └── updater-healthcheck.mjs # unhealthy if Geofabrik data is old or stale
 ├── .dockerignore             # keeps .cache/, data/ and web/public/config.json out of images
 ├── compose.yaml
 └── compose.override.example.yaml  # local port binding on 127.0.0.1
@@ -399,7 +400,8 @@ This is plain Docker; any host, including Coolify's terminal, can run it. A run 
 
 - Two services and two named volumes: `data` (releases, shared) and `cache` (updater only).
 - `web` uses `expose: ["80"]`, not `ports`, so it isn't published on the host and is only reachable through the reverse proxy. TLS and the domain are handled by that proxy (Coolify's in production). For local testing, a `compose.override.yaml` can add a `ports` mapping bound to `127.0.0.1`.
-- Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE` and `REQUEST_INTERVAL_MS` (updater; Geofabrik only, since OSM-FR always uses at least 2s).
+- Env vars: `MAPTILER_KEY` (web); `CRON_SCHEDULE`, `REQUEST_INTERVAL_MS` (Geofabrik only, since OSM-FR always uses at least 2s) and `UPDATE_MAX_AGE_DAYS` (updater).
+- Healthchecks: `web` fetches `/` with busybox `wget`. `updater` runs `docker/updater-healthcheck.mjs`, which is unhealthy when nothing is published, Geofabrik's `status` isn't `ok`, or its `fetchedAt` is older than `UPDATE_MAX_AGE_DAYS` (default 8: weekly plus a day). OSM-FR isn't checked, since it's manual. The updater's 10-minute start period (checked every 15 s) covers the first run on an empty volume. Docker only reports health; nothing restarts an unhealthy container.
 
 ## Testing
 

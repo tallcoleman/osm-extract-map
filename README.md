@@ -21,6 +21,9 @@ Environment variables:
 - `MAPTILER_KEY` (web): the basemap key. It's public, so restrict it to the site's origin in the MapTiler dashboard.
 - `CRON_SCHEDULE` (updater): default `0 3 * * 1` (Mondays 03:00 UTC).
 - `REQUEST_INTERVAL_MS` (updater): Geofabrik request spacing, default 1000. OSM-FR always waits at least 2 s.
+- `UPDATE_MAX_AGE_DAYS` (updater): the healthcheck reports unhealthy if Geofabrik wasn't checked successfully within this many days. Default 8; raise it if `CRON_SCHEDULE` runs less often than weekly.
+
+Healthchecks: `web` is healthy while nginx serves the app. `updater` is healthy while the published Geofabrik data is recent and wasn't reused after a failed fetch, so a failing weekly update shows up as unhealthy. OpenStreetMap France isn't checked, since it's updated by hand.
 
 `web` isn't published on the host; put a reverse proxy (e.g. Coolify's) in front of port 80. To try it locally, copy `compose.override.example.yaml` to `compose.override.yaml`, run `MAPTILER_KEY=… docker compose up -d --build`, and open http://127.0.0.1:8080/.
 

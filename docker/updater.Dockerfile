@@ -48,6 +48,7 @@ COPY updater ./updater
 RUN rm -rf updater/explore && find updater shared -name '*.test.ts' -delete
 COPY --from=supercronic /supercronic /usr/local/bin/supercronic
 COPY --chmod=755 docker/updater-entrypoint.sh /usr/local/bin/updater-entrypoint.sh
+COPY docker/updater-healthcheck.mjs /usr/local/lib/updater-healthcheck.mjs
 # Depending on the test stage makes BuildKit run it (it skips unused stages).
 COPY --from=test /tested /tested
 # Volume mount points, owned by node so new named volumes are too.
