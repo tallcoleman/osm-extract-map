@@ -104,8 +104,12 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── web.Dockerfile
 │   ├── web-entrypoint.sh     # writes config.json from env at start
 │   ├── nginx.conf
-│   └── updater.Dockerfile
-└── compose.yaml
+│   ├── security-headers.conf # included in every nginx location
+│   ├── updater.Dockerfile
+│   └── updater-entrypoint.sh # first run if no release yet, then supercronic
+├── .dockerignore             # keeps .cache/, data/ and web/public/config.json out of images
+├── compose.yaml
+└── compose.override.example.yaml  # local port binding on 127.0.0.1
 ```
 
 A single package keeps tooling simple. If the web and updater dependencies diverge a lot, this can be split into npm workspaces later.
@@ -365,7 +369,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
   - Hashed app assets: `Cache-Control: public, max-age=31536000, immutable`.
   - `index.html`, `config.json` and `/data/*`: `Cache-Control: no-cache` (revalidate with ETag).
   - `gzip on` for `application/json`, `application/geo+json` and JS/CSS. GeoJSON compresses very well.
-  - Map `.geojson` to `application/geo+json`.
+  - Map `.geojson` to `application/geo+json`, and `.mjs` (MapLibre's worker) to `text/javascript`: nginx's `mime.types` has no `.mjs`, and with `nosniff` a module worker served as `application/octet-stream` doesn't run.
 
 ### `updater` container
 
@@ -387,7 +391,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 ### Manual update
 
 - Geofabrik: `docker compose exec updater npm run update-data`.
-- OSM-FR: `docker compose exec updater npm run update-data -- --providers osmfr`. It takes about 1.5 hours, so run it detached (`docker compose exec -d …`) or in a terminal that stays open.
+- OSM-FR: `docker compose exec updater npm run update-data -- --providers osmfr`. It takes about 1.5 hours, so run it in a terminal that stays open, or detached with its output sent to the container logs: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'`.
 
 This is plain Docker; any host, including Coolify's terminal, can run it. A run that starts while another is in progress exits immediately (lock file on the data volume, built in phase 1).
 
@@ -479,7 +483,7 @@ Run before the first deploy and after major frontend changes:
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
 - [ ] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
 - [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
-- [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
+- [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`. (`/data/../` with `curl --path-as-is` returns the site's `index.html`: nginx resolves it to `/`, which is fine.)
 - [ ] `web` isn't reachable on the host's public IP, only through the proxy.
 - [ ] The production MapTiler key is restricted to the production origin.
 - [ ] `/debug.html` returns 404 in production (the debug map is dev only).
@@ -659,6 +663,36 @@ Decisions and findings:
 - Deploy to Coolify as a standard compose project.
 
 **Exit:** the production site is live, the scheduled update runs, and the manual update works.
+
+#### Phase 4 progress (2026-11-07)
+
+Done locally; the production steps are still open (see the list at the end).
+
+What's in:
+
+- `docker/web.Dockerfile` and `docker/updater.Dockerfile`, each starting with the same `deps` and `test` stages (`npm run check` and `npm run test:coverage`). BuildKit skips stages the final image doesn't use, so each final stage copies a marker file from `test`; without that the tests would silently not run. `npm ci --ignore-scripts` works everywhere (the only install script in the lock file is `fsevents`, macOS only), and the updater's runtime stage uses `--omit=dev` (its only runtime imports are `undici` and `polyclip-ts`), without tests or `updater/explore/`.
+- Base images pinned by digest: `node:22.23.4-alpine` and `nginx:1.30.6-alpine` (the stable line). supercronic v0.2.50 is checked against both the SHA1 in its release notes and the SHA-256 GitHub records for the asset, for amd64 and arm64; any other architecture fails the build.
+- `web`: nginx with the security headers in a snippet included by every location (a location's own `add_header` stops server-level ones being inherited), the cache rules, gzip, and `/data/` aliased read-only to `current/`. The entrypoint is installed in the nginx image's `/docker-entrypoint.d/` and warns in the log if `MAPTILER_KEY` is empty (the keyless fallback style is on a host the CSP blocks). `vite build` emits no `debug.html`, and the build fails if it ever does.
+- `updater`: runs as `node`. The entrypoint writes the crontab from `CRON_SCHEDULE`, checks it with `supercronic -test`, runs a Geofabrik update if `current` doesn't exist (a failure is logged and left to the schedule), then hands over to supercronic.
+- Volume ownership: both images create their mount points owned by uid 1000, so a new named volume is writable by the updater even if `web` mounts it first (checked by starting `web` alone on fresh volumes).
+- `compose.yaml` with `expose` only; `compose.override.example.yaml` binds `127.0.0.1:8080` for local testing (copy it to the gitignored `compose.override.yaml`).
+
+Checked with a local `docker compose up` (arm64, on fresh volumes):
+
+- The test stage passes inside the image on Node 22 (36 test files, 100% updater coverage).
+- First run: 554 Geofabrik extracts published, 34 requests in 52 s (index, 32 size pages and one more), so the 1 s pacing holds. Coverage gaps took 15.5 s.
+- `docker compose exec updater npm run update-data` publishes a new release and `web` serves it through its read-only mount at once. A second run started meanwhile exits 1 with the lock message. Restarting the updater skips the first run once `current` exists.
+- Headers, cache rules, gzip and MIME types as planned (`curl -I`). `/data../`, `/data`, `/data/releases/`, `/data/%2e%2e/…`, `/debug.html` and `/src/main.tsx` return 404; `/data/` returns 403 (no autoindex).
+- Headless Chrome against the container: the map renders, the attribution reads "Geofabrik extracts | © MapTiler © OpenStreetMap contributors", OSM-FR shows "no data yet", and the console has no CSP violations. The only error is `/favicon.ico` (phase 5).
+- Bug found and fixed on the way: MapLibre's worker `.mjs` was served as `application/octet-stream`, which `nosniff` would have blocked in production (see Deployment).
+
+Still to do (needs the owner's accounts):
+
+- [ ] Restrict the production MapTiler key to the production origin, and the development key to `localhost`.
+- [ ] Deploy to Coolify as a compose project: set `MAPTILER_KEY` (and optionally `CRON_SCHEDULE`), and point the domain at the `web` service on port 80.
+- [ ] Run the release checklist against production (the phone, VoiceOver and real-device performance items haven't been done).
+- [ ] One manual OSM-FR run in production: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (about 1.5 hours). The redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it.
+- [ ] Confirm the first scheduled run (Monday 03:00 UTC by default) in the updater's logs.
 
 ### Phase 5: polish
 

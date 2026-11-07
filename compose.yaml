@@ -1,0 +1,30 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    # Not published on the host: only reachable through the reverse proxy
+    # (Coolify's in production). See compose.override.example.yaml for local use.
+    expose: ["80"]
+    environment:
+      MAPTILER_KEY: ${MAPTILER_KEY:-}
+    volumes:
+      - data:/srv/data:ro
+    restart: unless-stopped
+
+  updater:
+    build:
+      context: .
+      dockerfile: docker/updater.Dockerfile
+    environment:
+      CRON_SCHEDULE: ${CRON_SCHEDULE:-0 3 * * 1}
+      # Geofabrik only; OSM-FR always waits at least 2 s between requests.
+      REQUEST_INTERVAL_MS: ${REQUEST_INTERVAL_MS:-1000}
+    volumes:
+      - data:/data
+      - cache:/cache
+    restart: unless-stopped
+
+volumes:
+  data:
+  cache:

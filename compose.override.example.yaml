@@ -1,0 +1,6 @@
+# Local testing only: copy to compose.override.yaml (gitignored) to reach the
+# site at http://127.0.0.1:8080/. Bound to 127.0.0.1 so it isn't public.
+services:
+  web:
+    ports:
+      - "127.0.0.1:8080:80"

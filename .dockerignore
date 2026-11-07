@@ -1,0 +1,12 @@
+# Keep the build context small, and keep local data, caches and keys out of images.
+.git
+.DS_Store
+node_modules
+coverage
+.cache
+data
+web/dist
+# Local development MapTiler key: production writes config.json at container start.
+web/public/config.json
+compose*.yaml
+docker/*.Dockerfile

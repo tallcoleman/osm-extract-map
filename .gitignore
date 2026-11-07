@@ -14,3 +14,6 @@ web/dist/
 
 # Local MapTiler key for development (production writes it at container start)
 web/public/config.json
+
+# Local compose overrides (see compose.override.example.yaml)
+compose.override.yaml
