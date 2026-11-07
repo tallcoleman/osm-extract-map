@@ -170,6 +170,7 @@ interface Meta {
   files: {
     extracts: string;                                // e.g. "extracts.json"
     boundaries: Partial<Record<ProviderId, string>>; // e.g. "boundaries-geofabrik.geojson"
+    gaps?: string;                                   // "gaps.geojson"; absent if it couldn't be computed
   };
 }
 ```
@@ -179,6 +180,7 @@ Output files in each release directory:
 - `meta.json`: small, fetched first.
 - `extracts.json`: all `Extract` records, no geometry. Drives the sidebar, search, selection and totals.
 - `boundaries-<provider>.geojson`: one FeatureCollection per provider. Each feature has `key`, `depth`, `isLeaf`, `isBundle` and `name` as properties (enough for map styling and filtering), plus the geometry.
+- `gaps.geojson`: land with no extract drawn, one MultiPolygon feature per provider set (`providers`: `"geofabrik"`, `"osmfr"` or `"geofabrik+osmfr"`) and `level`. Loaded after the rest, for the map's hatching (see Coverage gaps). Optional, so `SCHEMA_VERSION` stayed at 2.
 
 Splitting by provider keeps each file smaller and lets the browser load providers in parallel.
 
@@ -202,7 +204,7 @@ All network access goes through one client:
 
 1. Conditional GET of `https://download.geofabrik.de/index-v1.json`. One request; a `304` means the boundaries are unchanged.
 2. Map each feature to an `Extract`. Fields: `id`, `parent`, `name`, `urls.pbf`, `urls.updates`. Two index quirks are fixed first (phase 2): an id `<prefix>/<name>` whose prefix is a sibling extract is moved under that prefix (the index lists `us/alabama` beside `us`, under `north-america`, while Geofabrik's `us.html` lists the states), and a name equal to the id (`"us/alabama"`) is replaced by one derived from its last segment, using the OSM-FR name rules. Geometry comes from the feature itself. The page and `.poly` URLs are derived from the `.pbf` URL (`…-latest.osm.pbf` → `….html`, `….poly`); the `.poly` is linked, never fetched. A malformed index (bad JSON, missing fields, duplicate ids) fails the provider.
-3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (same table format, checked in phase 1), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Sizes are matched to extracts by `.pbf` URL, whichever page lists them (`russia` isn't on `index.html`; it comes from another region page, confirmed by the first online run). Units are 1024-based: `canada.html` shows "6.1 GB" for a file of 6,514,753,096 bytes. Conditional GETs, since pages have ETags. A page that fails to load, or has no sizes in the expected format, is logged and its children get `sizeBytes: null`; it doesn't fail the provider. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
+3. Sizes: fetch the HTML page of every extract that has children (31 as of phase 0), plus `index.html` for the top level (same table format, checked in phase 1), and parse the size shown next to each child's `.osm.pbf` link (e.g. `(1.2&nbsp;GB)`). Sizes are matched to extracts by `.pbf` URL, whichever page lists them (`russia` isn't on `index.html`; `europe.html` and `asia.html` both list it, confirmed by the first online run). Units are 1024-based: `canada.html` shows "6.1 GB" for a file of 6,514,753,096 bytes. Conditional GETs, since pages have ETags. A page that fails to load, or has no sizes in the expected format, is logged and its children get `sizeBytes: null`; it doesn't fail the provider. HEAD on `.osm.pbf` is not used: robots.txt disallows it.
 4. Replication: `available = !!urls.updates`. The `updates` URL doesn't name an interval, so it is set from the provider's `expectedInterval` (daily). Geofabrik's [technical page](https://download.geofabrik.de/technical.html) confirms one update per day for every extract. `state.txt` and `*updates*` are disallowed by robots.txt, so they are never fetched.
 
 ### Replication status (both providers)
@@ -328,7 +330,8 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 ### Map interaction
 
 - Click a polygon to toggle selection. If several features are under the cursor (common when both providers are shown), show a small popup listing them so the user can choose.
-- Hover shows a tooltip with name, provider and size.
+- Hover shows a tooltip with name, provider and size. It's placed after measuring itself, so it stays inside the map (flipping to the other side of the cursor, or shifting along the edge on a narrow map), and it hides while the map pans or zooms.
+- Zoom buttons and a location button (MapLibre's geolocate control) sit at the top right.
 - Replication badges are based on `replication.status`:
   - `none`: warning badge, "No change files".
   - `differs`: notice badge naming the interval, e.g. "Hourly updates only (OSM-FR default is minutely)".
@@ -452,6 +455,7 @@ MapLibre needs WebGL, which jsdom doesn't have. So map behaviour is split into t
   - search and sorting;
   - `safeHref()`: allowlisted `https:` URLs pass, and `javascript:`, `data:`, `http:` and off-host URLs render no link;
   - the list of candidates for the overlap picker;
+  - parent region paths, the hatch pattern and tooltip placement;
   - loading data/config, including error and stale states.
 - **The map component:** `react-map-gl` is mocked. Tests check that the right sources, layers, filters and event handlers are passed in, and that a mocked click with several features opens the overlap picker. Real rendering is checked by hand (see the checklist below).
 
@@ -611,7 +615,7 @@ Other changes: `SCHEMA_VERSION` is now 2 (the `isBundle` field), so a version 1 
 
 ### Phase 3: frontend MVP
 
-- Map, provider toggle, level selector with coarser-fallback styling, hover, click selection with the overlap picker, selection panel with totals, badges, copy buttons, provider links, attribution and last-updated footer.
+- Map, provider toggle, level selector with coarser-fallback styling, hover, click selection with the overlap picker, selection panel with totals, badges, copy buttons, provider links, attribution and last-updated footer (moved into the header after review).
 - **GeoJSON performance check** on desktop and a mid-range phone (or Chrome CPU throttling): time to first render, pan/zoom smoothness with both providers at leaf level, and memory use. If it's acceptable, keep GeoJSON. If not, try simplifying first (mapshaper at a light tolerance), and consider PMTiles only after that.
 
 - Logic modules and component tests, including the accessibility tests, written alongside the features.
@@ -620,7 +624,7 @@ Other changes: `SCHEMA_VERSION` is now 2 (the `isBundle` field), so a version 1 
 
 #### Phase 3 results (2026-11-06)
 
-Done. `npm run dev` serves the app at `http://localhost:5173/` against `data/current`; `npm run build` then `npm run preview` serves the production build the same way. 508 tests (166 of them frontend), updater and shared code still at 100% coverage, frontend at about 99% of lines. `npm run check` runs both type checks and oxlint.
+Done. `npm run dev` serves the app at `http://localhost:5173/` against `data/current`; `npm run build` then `npm run preview` serves the production build the same way. 534 tests after the review rounds (182 of them frontend), updater and shared code still at 100% coverage (frontend coverage isn't enforced; it was about 99% of lines before review). `npm run check` runs both type checks and oxlint.
 
 What's in:
 
@@ -630,6 +634,8 @@ What's in:
 - Each provider's `fetchedAt`, stale and missing-provider notices, and a GitHub link, all in the header (first built as a footer, moved up after review because the list pushed it out of sight). The about link is left for the phase 5 about modal.
 - Map controls: zoom buttons and a location button (MapLibre's geolocate control; the position stays in the browser). The hover tooltip measures itself and stays inside the map, and hides while the map pans or zooms, since a touch screen has no cursor to move away afterwards.
 - Below 768px the map takes the top 40% of the screen and stays there while the sidebar scrolls below it. The bottom sheet is still phase 5.
+- Coverage gaps: land with no extract drawn for the shown providers and level is hatched, with a legend entry (see Coverage gaps in the updater pipeline). Added after review. After pulling, rebuild local data with `npm run update-data -- --offline --providers geofabrik,osmfr` to get `gaps.geojson`.
+- Smaller fixes from review: the selected provider segment's right border shows and no longer draws above the map on phones; a "Legend" label above the line styles; a copy icon on the copy buttons; provider, size and update details aligned on one baseline; the empty selection reads "Click an area on the map or list below."; dates read "last checked" rather than "last updated".
 
 Decisions and findings:
 
@@ -639,7 +645,9 @@ Decisions and findings:
 - **axe without `vitest-axe`:** that package hasn't changed since early 2025, so the tests call `axe-core` directly. Colour contrast is checked by `web/src/lib/contrast.test.ts` against the tokens in `styles.css` and the basemap's land and water colours. OSM-FR's line colour was darkened from `#d55e00` to `#b84a00` to clear 3:1 against water.
 - **No map labels from our data, but parent regions in the list.** The extract list and selection panel show each extract's parent regions, since there's no map around them to tell apart similar names. The overlap picker doesn't: it opens on the map, where the context is visible.
 - **Geofabrik sizes:** the offline builds used until now had sizes for only 21 of 554 Geofabrik extracts (3.8%), because the cache held just `index.html` and `canada.html`; the app showed "Size unknown" for the rest (reported for Iowa). The size code itself was fine. One online run (`npm run update-data -- --record --providers geofabrik`, 2026-11-07) made 34 requests at the 1 s pacing (index, 32 size pages, one not modified) and now gives sizes for all 554 extracts, including `russia` and the US states from `us.html`. OSM-FR was already at 1,196 of 1,196. The pages are cached, so later offline builds keep the sizes.
-- New dev dependencies were pinned to releases at least two weeks old.
+- **Shared level rule:** `levelClass()` moved to `shared/levels.ts` so the updater's coverage gaps and the map agree on what each level draws. The MapLibre filter version stays in `web/src/lib/levels.ts`.
+- **Build size warning:** the bundle is about 1.4 MB minified (380 KB gzipped), almost all of it MapLibre, so `chunkSizeWarningLimit` is 1500 KB.
+- New dev dependencies were pinned to releases at least two weeks old. `polyclip-ts` 0.16.8 (December 2024) is the one new runtime dependency, for the updater.
 
 ### Phase 4: deployment
 
@@ -666,7 +674,7 @@ Decisions and findings:
 
 - **OSM-FR access:** due to robots.txt, the owner chose to limit requests to those matching manual exploration (2026-11-06). No automatic updating of OSM-FR is planned without permission.
 - ~~Geofabrik `index.html` size format for top-level extracts (phase 1).~~ *Same format as region pages.*
-- Which Geofabrik page lists `russia`'s size (it isn't on `index.html`); check after the first online run.
+- ~~Which Geofabrik page lists `russia`'s size (it isn't on `index.html`); check after the first online run.~~ *Both `europe.html` and `asia.html` list it (checked 2026-11-07).*
 - ~~Final level labels and override list (phase 2).~~ *See Levels and the phase 2 results.*
 - ~~Confirm OSM-FR's default replication interval.~~ *Minutely (phase 0). Geofabrik's is daily.*
 - Whether to show merged extracts (phase 6).
