@@ -22,6 +22,7 @@ Environment variables:
 
 - `MAPTILER_KEY` (web): the basemap key. It's public, so restrict it to the site's origin in the MapTiler dashboard.
 - `SITE_URL` (web): the site's public root URL, e.g. `https://extracts.example.org`. Used for the absolute `og:url` and `og:image` tags in link previews; without it, previews show the title and description but no image.
+- `UMAMI_SCRIPT_URL` and `UMAMI_WEBSITE_ID` (web): optional Umami analytics, e.g. `https://umami.example.org/script.js` and the website ID from the Umami dashboard. The script is added to the page and its origin to the Content Security Policy (`script-src` and `connect-src`). If either is unset or invalid, the site has no analytics.
 - `CRON_SCHEDULE` (updater): default `0 3 * * 1` (Mondays 03:00 UTC).
 - `REQUEST_INTERVAL_MS` (updater): Geofabrik request spacing, default 1000. OSM-FR always waits at least 2 s.
 - `UPDATE_MAX_AGE_DAYS` (updater): the healthcheck reports unhealthy if Geofabrik wasn't checked successfully within this many days. Default 8; raise it if `CRON_SCHEDULE` runs less often than weekly.

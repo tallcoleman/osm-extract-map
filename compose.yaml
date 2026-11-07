@@ -11,6 +11,10 @@ services:
       # The site's public root URL, e.g. https://extracts.example.org. Used for the
       # absolute og:url and og:image link preview tags; without it previews have no image.
       SITE_URL: ${SITE_URL:-}
+      # Umami analytics, e.g. https://umami.example.org/script.js and the site's
+      # website ID. The script's origin is added to the CSP. Without both, no analytics.
+      UMAMI_SCRIPT_URL: ${UMAMI_SCRIPT_URL:-}
+      UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
     volumes:
       - data:/srv/data:ro
     restart: unless-stopped

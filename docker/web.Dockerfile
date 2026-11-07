@@ -29,12 +29,17 @@ RUN npm run build && test ! -e web/dist/debug.html
 FROM ${NGINX_IMAGE}
 RUN apk add --no-cache jq
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
+# A template: the entrypoint writes the served snippet at every start, adding the
+# analytics origin to the CSP. The default here (no analytics) covers a start without it.
+COPY docker/security-headers.conf /etc/nginx/security-headers.template.conf
+RUN mkdir -p /etc/nginx/snippets \
+ && sed 's/ __ANALYTICS_ORIGIN__//g' /etc/nginx/security-headers.template.conf > /etc/nginx/snippets/security-headers.conf
 # The nginx image runs executable *.sh files in /docker-entrypoint.d/ before starting.
 COPY --chmod=755 docker/web-entrypoint.sh /docker-entrypoint.d/40-runtime-config.sh
 COPY --from=build /app/web/dist /usr/share/nginx/html
 # The entrypoint writes the served index.html from this copy at every start
-# (adding the SITE_URL link preview tags), so a changed SITE_URL takes effect.
+# (adding the SITE_URL link preview tags and the Umami script), so changed
+# settings take effect.
 RUN mv /usr/share/nginx/html/index.html /usr/share/nginx/index.template.html
 # Mount point for the data volume. Owned by the updater's node user (uid 1000), so
 # the volume is writable by the updater even if this container creates it first.

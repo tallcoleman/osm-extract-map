@@ -12,7 +12,7 @@
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- Link previews. docker/web-entrypoint.sh adds og:url and og:image (absolute URLs) from SITE_URL, and relies on the exact twitter:card line below and the closing head tag. -->
+    <!-- Link previews. docker/web-entrypoint.sh adds og:url and og:image (absolute URLs) from SITE_URL, and the Umami analytics script from UMAMI_SCRIPT_URL, and relies on the exact twitter:card line below and the closing head tag. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OSM Extracts Map" />
     <meta property="og:title" content="OSM Extracts Map" />
@@ -21,11 +21,6 @@
       content="Compare OpenStreetMap extracts and estimate the download size for the areas you need."
     />
     <meta name="twitter:card" content="summary" />
-    <script
-      defer
-      src="https://umami.tallcolemanprojects.ca/script.js"
-      data-website-id="30a6c7c6-0fa8-438c-b26f-2619c2f9e98b"
-    ></script>
   </head>
   <body>
     <div id="root"></div>
