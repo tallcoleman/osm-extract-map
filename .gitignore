@@ -4,6 +4,7 @@
 # project
 node_modules/
 coverage/
+web/dist/
 
 # Full HTTP cache recorded from providers. Only trimmed fixtures are committed.
 .cache/

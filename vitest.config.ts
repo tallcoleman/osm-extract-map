@@ -1,3 +1,4 @@
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -9,6 +10,17 @@ export default defineConfig({
           environment: "node",
           include: ["updater/**/*.test.ts", "shared/**/*.test.ts"],
           setupFiles: ["test/network-guard.ts"],
+        },
+      },
+      {
+        plugins: [react()],
+        test: {
+          name: "web",
+          environment: "jsdom",
+          // Lets contrast.test.ts read styles.css (vitest stubs CSS otherwise).
+          css: { include: [/styles\.css/] },
+          include: ["web/src/**/*.test.{ts,tsx}"],
+          setupFiles: ["test/network-guard.ts", "web/src/test/setup.ts"],
         },
       },
     ],

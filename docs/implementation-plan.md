@@ -9,7 +9,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 | Level filter           | Levels are derived from tree depth. The default view is "smallest available" (leaf extracts). When a branch has no extract at the selected depth, the deepest available ancestor-level leaf is shown with a distinct "coarser" style. Phase 2 confirmed raw depth works once Russia is moved to depth 1, Geofabrik's US states are put under `us`, and bundle extracts (e.g. `dach`) are flagged and left out of level views.                                                                                                                                                                                                                                                                                                                                                                |
 | Download sizes         | Geofabrik: sizes parsed from each parent region's HTML page (rounded, e.g. "1.2 GB"), about 32 pages. HEAD requests on `.osm.pbf` were dropped because Geofabrik's robots.txt disallows `*.osm.pbf`. OSM-FR: sizes parsed from nginx directory listings (also rounded, e.g. `311M`). Sizes are estimates either way.                                                                                                                                                                                                                                                                                                                                                                |
 | Overlap in size totals | Not specially handled, since only one depth level is shown at a time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Geometry format        | Full-detail GeoJSON first. PMTiles only if performance testing shows a problem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Geometry format        | Full-detail GeoJSON, confirmed by the phase 3 performance check. Simplification, then PMTiles, only if real devices show a problem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Change file frequency  | Each provider has an expected default interval (OSM-FR: minutely, Geofabrik: daily, both to be confirmed in phase 0). Extracts are flagged only when they differ from their provider's default or have no change files at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | URLs                   | Provider pages are the primary link. Key URLs (page, `.pbf`, `.poly`, replication base) are shown with copy buttons. The site helps people explore what providers offer; it does not replace their download pages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | OSM-FR scope           | Everything in `extracts/`, matched with `polygons/` and `replication/`. Pre-merged extracts are excluded via a manual list unless they can be detected from structure. Whether to show them is revisited at the end.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -82,15 +82,22 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │       ├── osmfr-exclude.json     # extra exclusions (merge/ is skipped by path)
 │       └── level-overrides.json   # depth overrides and bundle list (phase 2)
 ├── web/
-│   ├── vite.config.ts        # dev server also serves /data/ from data/current
+│   ├── vite.config.ts        # dev and preview servers also serve /data/ from data/current
 │   ├── tsconfig.json
 │   ├── debug.html            # phase 2 debug map (dev only)
 │   ├── index.html
-│   ├── src/…                 # React + TS + react-map-gl/maplibre
-│   └── public/
+│   ├── src/
+│   │   ├── App.tsx           # loading/error states, then sidebar + map
+│   │   ├── maplibre-worker.ts  # points MapLibre at its worker file (see phase 3 results)
+│   │   ├── styles.css        # colour tokens on :root, checked by lib/contrast.test.ts
+│   │   ├── components/       # MapView, ExtractList, SelectionPanel, controls, footer…
+│   │   ├── lib/              # pure logic: levels, search, selection, badges, safeHref, load…
+│   │   └── test/             # react-map-gl mock, test data, axe helper
+│   └── public/               # config.json (gitignored) in development
 ├── fixtures/                 # small committed fixtures for unit tests
 │   ├── pipeline/             # small self-consistent provider "site" for the pipeline test
 │   └── expected/             # golden output files for the pipeline test
+├── .oxlintrc.json            # lint rules, including jsx-a11y
 ├── docker/
 │   ├── web.Dockerfile
 │   ├── web-entrypoint.sh     # writes config.json from env at start
@@ -288,12 +295,14 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 - **Level filter** (applied with a MapLibre `filter` expression on `depth`/`isLeaf`/`isBundle`, with no data reload; bundles are always left out until phase 6 decides how to show them):
   - Level *d* shows features where `depth == d`, plus features where `depth < d && isLeaf` in the **coarser** style (dashed line, lower opacity). This is the fallback for branches with no extract at depth *d*.
   - "Smallest available" (the default) shows every leaf, in the normal style.
-- **Labels:** extract names at a sensible zoom, using symbol placement on polygon centroids. Decide in phase 3 whether these help or add clutter.
+- **Labels:** none (decided in phase 3). Two providers' outlines plus the basemap's own place labels are already busy, and names are in the hover tooltip and the extract list.
+- **Selected outline:** a line layer filtered to the selected keys (`["in", ["get", "key"], ["literal", keys]]`), with no level filter, so a selected extract stays outlined at every level. Its filter changes only on clicks. Drawing every feature there and hiding unselected ones with feature state made panning noticeably slower.
+- **Provider toggle:** hides a provider's layers with `visibility: none` rather than removing its source, so switching is instant and feature state is kept.
 
 ### Controls (sidebar on desktop, bottom sheet on mobile)
 
 - **Header:** site name, one-line explanation, and prominent links to https://www.geofabrik.de/ and https://www.openstreetmap.fr/.
-- **Provider toggle:** Geofabrik / OSM-FR / Both (default Both).
+- **Provider toggle:** Both / Geofabrik / OSM-FR (default Both). A provider with no data yet is disabled.
 - **Level selector:** Smallest available (default) / Continent / Country / Region / Sub-region, mapping to depth 0–3 (confirmed in phase 2). A legend explains the coarser style.
 - **Search box:** filters the visible extracts by name.
 - **Extract list:** visible extracts sorted by name or size. This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
@@ -317,9 +326,9 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 
 MapLibre's attribution control collects the `attribution` strings from every loaded source. The MapTiler basemap style already brings its own (typically "© MapTiler © OpenStreetMap contributors"). So attribution starts with a check, and only what's missing gets added:
 
-1. In phase 3, load the chosen basemap style and record what attribution it shows by default.
+1. In phase 3, load the chosen basemap style and record what attribution it shows by default. *MapTiler "dataviz" shows "© MapTiler © OpenStreetMap contributors".*
 2. Add anything still needed as the `attribution` property on our own GeoJSON sources, not as separate page text. It then appears in the same control, and only while that provider's layer is loaded. Expected additions: boundary credit for Geofabrik and OpenStreetMap France, linking to their sites.
-3. Don't duplicate credits the basemap already shows (e.g. "© OpenStreetMap contributors").
+3. Don't duplicate credits the basemap already shows (e.g. "© OpenStreetMap contributors"). *The sources add "Geofabrik extracts" and "OpenStreetMap France extracts", each linking to the provider's homepage. The full control reads "Geofabrik extracts | OpenStreetMap France extracts | © MapTiler © OpenStreetMap contributors", and MapLibre collapses it on narrow screens.*
 4. The about modal can explain the data sources in more detail, but the map's attribution control is the source of truth.
 
 ### Accessibility and mobile
@@ -336,7 +345,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - Multi-stage Dockerfile: a Node stage installs with `npm ci` and builds the Vite app, then copies `dist/` into `nginx:alpine`. The final stage also installs `jq` for the entrypoint.
 - nginx config:
   - The data volume is mounted read-only. `/data/` serves `current/` from it, written as `location /data/ { alias /srv/data/current/; }` with a trailing slash on both. Without both slashes, a request such as `/data../` can reach the parent directory. `autoindex` stays off.
-  - Security headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a Content Security Policy that allows only what MapLibre and MapTiler need, starting from `default-src 'self'; connect-src 'self' https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; worker-src blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. Adjust it in phase 3 if the chosen basemap style loads from other MapTiler hosts.
+  - Security headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a Content Security Policy that allows only what MapLibre and MapTiler need, starting from `default-src 'self'; connect-src 'self' https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. MapLibre 6 loads its worker as a same-origin module file (`assets/maplibre-gl-worker-<hash>.mjs`), hence `worker-src 'self'`. The "dataviz" style loads its style, tiles, glyphs and sprite from `api.maptiler.com` only (checked in phase 3).
   - Hashed app assets: `Cache-Control: public, max-age=31536000, immutable`.
   - `index.html`, `config.json` and `/data/*`: `Cache-Control: no-cache` (revalidate with ETag).
   - `gzip on` for `application/json`, `application/geo+json` and JS/CSS. GeoJSON compresses very well.
@@ -378,9 +387,9 @@ This is plain Docker; any host, including Coolify's terminal, can run it. A run 
 | Area | Target | Tools |
 | --- | --- | --- |
 | Updater and shared code (`updater/`, `shared/`) | 100% line, branch and function coverage, enforced in CI and the Docker build | vitest, `@vitest/coverage-v8`, undici `MockAgent` |
-| Frontend logic and components (`web/src/`) | Good coverage of key features and accessibility; no hard threshold | vitest (jsdom), React Testing Library, `@testing-library/user-event`, `vitest-axe` |
+| Frontend logic and components (`web/src/`) | Good coverage of key features and accessibility; no hard threshold | vitest (jsdom), React Testing Library, `@testing-library/user-event`, `axe-core` |
 | End-to-end / browser | None. Replaced by a short manual release checklist | — |
-| Static checks | Type check and lint must pass | `tsc --noEmit`, ESLint with `eslint-plugin-jsx-a11y` |
+| Static checks | Type check and lint must pass | `tsc --noEmit`, oxlint with its jsx-a11y and react plugins |
 
 Vitest is set up with two projects: `updater` (Node environment) and `web` (jsdom environment). A single `npm test` runs both.
 
@@ -436,7 +445,7 @@ Component tests (React Testing Library + user-event) cover the provider toggle, 
 
 Accessibility tests:
 
-- `vitest-axe` checks on each major component in its main states (empty, with selection, with warnings, error).
+- axe checks (`axe-core`, called directly through a small helper in `web/src/test/data.ts`) on each major component in its main states (empty, with selection, with warnings, error).
 - **Keyboard-only flows:** reach every control with Tab; select and deselect extracts from the list with Enter/Space; open and close the modal with focus trapped inside and returned afterwards; Escape closes the overlap picker and modal.
 - **Screen reader text:** badges have text labels; changes to the selection total are announced through an `aria-live` region; icon-only buttons have accessible names.
 - **Colour contrast:** axe can't measure contrast in jsdom. Instead, a unit test checks the colour tokens directly: at least 4.5:1 for text and badges against their backgrounds, and at least 3:1 for the provider line colours against a representative basemap background colour.
@@ -450,7 +459,7 @@ Run before the first deploy and after major frontend changes:
 - [ ] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
 - [ ] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
-- [ ] Performance is still acceptable with both providers at leaf level.
+- [ ] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
 - [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
 - [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
 - [ ] `web` isn't reachable on the host's public IP, only through the proxy.
@@ -593,6 +602,26 @@ Other changes: `SCHEMA_VERSION` is now 2 (the `isBundle` field), so a version 1 
 - Logic modules and component tests, including the accessibility tests, written alongside the features.
 
 **Exit:** all core features work locally against offline data and have tests; the performance decision is recorded.
+
+#### Phase 3 results (2026-11-06)
+
+Done. `npm run dev` serves the app at `http://localhost:5173/` against `data/current`; `npm run build` then `npm run preview` serves the production build the same way. 508 tests (166 of them frontend), updater and shared code still at 100% coverage, frontend at about 99% of lines. `npm run check` runs both type checks and oxlint.
+
+What's in:
+
+- Map with both providers, level selector (with the coarser fallback dashed and fainter, and a legend), provider toggle, hover tooltip and highlight, click to select, and the overlap picker when a click hits several extracts.
+- Selection panel: total and per-provider estimated sizes (extracts with no known size are counted separately), replication badges, provider page link, and copy buttons for the `.pbf`, `.poly` and replication URLs. Links and copied URLs both go through `safeHref()`.
+- Search (ignores case, accents and punctuation) and an extract list sortable by name or size. Hovering or focusing a row highlights its polygon; activating it selects it and zooms to it.
+- Footer with each provider's `fetchedAt`, stale and missing-provider notices, and a GitHub link. The about link is left for the phase 5 about modal.
+- Below 768px the map sits on top and the sidebar scrolls below it. The bottom sheet is still phase 5.
+
+Decisions and findings:
+
+- **Performance: keep full-detail GeoJSON.** Measured with headless Chrome on the production build. It renders with SwiftShader (on the CPU), so these figures are a pessimistic stand-in for a real GPU. Data (9.7 MB raw) arrives in about 0.15 s locally. Map `load` comes about 0.5 s after a basemap-only run at normal speed, and about 0.8 s after it at 4× CPU throttling (a stand-in for a mid-range phone; the basemap alone takes 3.4 to 3.8 s in this renderer). Zooming ran at 47 fps (37 fps throttled), against 90 fps (78) for the basemap alone. Hover stays at full frame rate. JS heap 56 to 111 MB. A check on a real phone is still in the release checklist.
+- **MapLibre's worker in production builds:** MapLibre 6 loads its worker from a file next to its own module, which a Vite build leaves behind, so the built app failed with "Worker failed to load". `web/src/maplibre-worker.ts` imports the worker file with `?url` (Vite copies it into `assets/` with a hash) and calls `setWorkerUrl()`. The CSP needs `worker-src 'self'` (see Deployment).
+- **Lint: oxlint instead of ESLint.** `typescript-eslint` needs TypeScript below 6.1, and this project uses TypeScript 7, which has no JS API. oxlint parses TypeScript itself and has jsx-a11y and React hooks rules; `.oxlintrc.json` turns on the jsx-a11y recommended set. `prefer-tag-over-role` and `control-has-associated-label` are off: the first would swap `role="status"`/`role="dialog"` for elements with different behaviour, and the second can't see text inside child components (the axe tests check names instead).
+- **axe without `vitest-axe`:** that package hasn't changed since early 2025, so the tests call `axe-core` directly. Colour contrast is checked by `web/src/lib/contrast.test.ts` against the tokens in `styles.css` and the basemap's land and water colours. OSM-FR's line colour was darkened from `#d55e00` to `#b84a00` to clear 3:1 against water.
+- New dev dependencies were pinned to releases at least two weeks old.
 
 ### Phase 4: deployment
 

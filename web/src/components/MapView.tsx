@@ -1,0 +1,239 @@
+import type { ExpressionSpecification, MapGeoJSONFeature, MapSourceDataEvent } from "maplibre-gl";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import MapGL, { AttributionControl, Layer, type MapLayerMouseEvent, type MapRef, NavigationControl, Popup, Source } from "react-map-gl/maplibre";
+import { type BoundaryCollection, type Extract, PROVIDER_IDS, type ProviderId } from "../../../shared/schema.ts";
+import type { BBox } from "../lib/geo.ts";
+import { type Level, levelFilters } from "../lib/levels.ts";
+import { pickerCandidates } from "../lib/picker.ts";
+import { PROVIDER_ATTRIBUTION, PROVIDER_COLORS, providerOfKey } from "../lib/providers.ts";
+import { OverlapPicker } from "./OverlapPicker.tsx";
+import { HoverTooltip } from "./HoverTooltip.tsx";
+
+/** Hover waits until the cursor settles, so sweeping across many areas doesn't queue up redraws. */
+export const HOVER_DELAY_MS = 60;
+
+export interface ZoomRequest {
+  bbox: BBox;
+  /** Changes on every request, so zooming to the same extract twice works. */
+  id: number;
+}
+
+export interface MapViewProps {
+  styleUrl: string;
+  boundaries: Partial<Record<ProviderId, BoundaryCollection>>;
+  /** Providers to draw; the others stay loaded but hidden. */
+  providers: readonly ProviderId[];
+  level: Level;
+  selected: readonly string[];
+  /** Extract hovered or focused in the list. */
+  highlighted: string | null;
+  extractsByKey: ReadonlyMap<string, Extract>;
+  zoomTo: ZoomRequest | null;
+  onToggle: (key: string) => void;
+}
+
+type FlagState = { selected: boolean; hover: boolean };
+
+const flag = (name: keyof FlagState): ExpressionSpecification => ["boolean", ["feature-state", name], false];
+
+export const layerIds = (p: ProviderId) => ({
+  fill: `${p}-fill`,
+  coarser: `${p}-coarser`,
+  line: `${p}-line`,
+  selected: `${p}-selected`,
+});
+
+/** Matches the selected extracts of one provider. */
+export function selectedFilter(selected: readonly string[], provider: ProviderId): ExpressionSpecification {
+  return ["in", ["get", "key"], ["literal", selected.filter((k) => providerOfKey(k) === provider)]];
+}
+
+const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function MapViewImpl(props: MapViewProps) {
+  const { boundaries, providers, level, selected, highlighted, extractsByKey, zoomTo, onToggle } = props;
+  const mapRef = useRef<MapRef>(null);
+  const [cursorKeys, setCursorKeys] = useState<string[]>([]);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; width: number; height: number; extracts: Extract[] } | null>(null);
+  const [picker, setPicker] = useState<{ longitude: number; latitude: number; extracts: Extract[] } | null>(null);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  // Feature state last set on the map, per key, so only changes are sent.
+  const applied = useRef(new Map<string, FlagState>());
+
+  const loaded = PROVIDER_IDS.filter((p) => boundaries[p]);
+  const filters = levelFilters(level);
+
+  // Hover and selection use feature state rather than layer filters: changing
+  // a filter makes MapLibre rebuild the layer, while feature state only repaints.
+  const syncFeatureState = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const hover = new Set(cursorKeys);
+    if (highlighted) hover.add(highlighted);
+    const sel = new Set(selected);
+    for (const key of new Set([...applied.current.keys(), ...hover, ...sel])) {
+      const source = providerOfKey(key);
+      if (!source || !map.getSource(source)) continue;
+      const next = { selected: sel.has(key), hover: hover.has(key) };
+      const prev = applied.current.get(key);
+      if (prev && prev.selected === next.selected && prev.hover === next.hover) continue;
+      map.setFeatureState({ source, id: key }, next);
+      if (next.selected || next.hover) applied.current.set(key, next);
+      else applied.current.delete(key);
+    }
+  }, [cursorKeys, highlighted, selected]);
+
+  useEffect(syncFeatureState, [syncFeatureState]);
+
+  // When a source is (re)added its feature state is empty, so send it again.
+  const onSourceData = useCallback(
+    (e: MapSourceDataEvent) => {
+      const p = PROVIDER_IDS.find((id) => id === e.sourceId);
+      if (!p || e.sourceDataType !== "metadata") return;
+      for (const key of [...applied.current.keys()]) if (providerOfKey(key) === p) applied.current.delete(key);
+      syncFeatureState();
+    },
+    [syncFeatureState],
+  );
+
+  useEffect(() => {
+    if (!zoomTo) return;
+    const [w, s, e, n] = zoomTo.bbox;
+    mapRef.current?.fitBounds(
+      [
+        [w, s],
+        [e, n],
+      ],
+      { padding: 40, maxZoom: 10, duration: reducedMotion() ? 0 : 800 },
+    );
+  }, [zoomTo]);
+
+  useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
+
+  const extractsAt = (features: readonly MapGeoJSONFeature[] | undefined) => pickerCandidates(features ?? [], extractsByKey);
+
+  const onMouseMove = (e: MapLayerMouseEvent) => {
+    const found = extractsAt(e.features);
+    const { x, y } = e.point;
+    const { clientWidth: width, clientHeight: height } = e.target.getContainer();
+    window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      setCursorKeys((prev) => {
+        const next = found.map((f) => f.key);
+        return prev.join() === next.join() ? prev : next;
+      });
+      setTooltip(found.length ? { x, y, width, height, extracts: found } : null);
+    }, HOVER_DELAY_MS);
+  };
+
+  const onMouseLeave = () => {
+    window.clearTimeout(hoverTimer.current);
+    setCursorKeys([]);
+    setTooltip(null);
+  };
+
+  const onClick = (e: MapLayerMouseEvent) => {
+    const found = extractsAt(e.features);
+    if (found.length > 1) {
+      setTooltip(null);
+      setPicker({ longitude: e.lngLat.lng, latitude: e.lngLat.lat, extracts: found });
+      return;
+    }
+    setPicker(null);
+    if (found.length === 1) onToggle(found[0]!.key);
+  };
+
+  const closePicker = useCallback(() => {
+    setPicker(null);
+    mapRef.current?.getCanvas().focus();
+  }, []);
+
+  return (
+    <div className="map-wrap">
+      <MapGL
+        ref={mapRef}
+        initialViewState={{ longitude: 10, latitude: 30, zoom: 1.3 }}
+        mapStyle={props.styleUrl}
+        attributionControl={false}
+        interactiveLayerIds={providers.map((p) => layerIds(p).fill)}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        onClick={onClick}
+        onSourceData={onSourceData}
+        onLoad={() => performance.mark("map-load")}
+        onIdle={() => performance.getEntriesByName("map-idle").length || performance.mark("map-idle")}
+        cursor={cursorKeys.length ? "pointer" : "grab"}
+      >
+        <NavigationControl position="top-right" showCompass={false} />
+        <AttributionControl position="bottom-right" />
+        {loaded.map((p) => {
+          const ids = layerIds(p);
+          const color = PROVIDER_COLORS[p];
+          const visibility = providers.includes(p) ? "visible" : "none";
+          // Keeps the two providers' outlines from drawing exactly on top of each other.
+          const offset = p === "osmfr" ? 1.5 : 0;
+          return (
+            <Source key={p} id={p} type="geojson" data={boundaries[p]!} promoteId="key" attribution={PROVIDER_ATTRIBUTION[p]}>
+              <Layer
+                id={ids.fill}
+                type="fill"
+                filter={filters.any}
+                layout={{ visibility }}
+                paint={{ "fill-color": color, "fill-opacity": ["case", flag("selected"), 0.3, flag("hover"), 0.12, 0] }}
+              />
+              <Layer
+                id={ids.coarser}
+                type="line"
+                filter={filters.coarser}
+                layout={{ visibility }}
+                paint={{
+                  "line-color": color,
+                  "line-width": ["case", flag("hover"), 2.5, 1],
+                  "line-opacity": ["case", flag("hover"), 1, 0.55],
+                  "line-dasharray": [3, 2],
+                  "line-offset": offset,
+                }}
+              />
+              <Layer
+                id={ids.line}
+                type="line"
+                filter={filters.normal}
+                layout={{ visibility }}
+                paint={{ "line-color": color, "line-width": ["case", flag("hover"), 2.5, 1.2], "line-offset": offset }}
+              />
+              {/*
+                Filtered to the selected keys and not the level, so a selected extract
+                stays outlined at every level. The filter changes only on clicks; drawing
+                every feature here and hiding the unselected ones made panning much slower.
+              */}
+              <Layer
+                id={ids.selected}
+                type="line"
+                filter={selectedFilter(selected, p)}
+                layout={{ visibility }}
+                paint={{ "line-color": color, "line-width": 3, "line-offset": offset }}
+              />
+            </Source>
+          );
+        })}
+        {picker && (
+          <Popup
+            longitude={picker.longitude}
+            latitude={picker.latitude}
+            closeButton={false}
+            closeOnClick={false}
+            maxWidth="320px"
+            onClose={() => setPicker(null)}
+          >
+            <OverlapPicker
+              key={`${picker.longitude},${picker.latitude}`}
+              extracts={picker.extracts} selected={selected} onToggle={onToggle} onClose={closePicker} />
+          </Popup>
+        )}
+      </MapGL>
+      {tooltip && !picker && <HoverTooltip {...tooltip} />}
+    </div>
+  );
+}
+
+export const MapView = memo(MapViewImpl);

@@ -4,6 +4,7 @@
 // Run with `npm run dev`, then open http://localhost:5173/debug.html
 
 import "maplibre-gl/dist/maplibre-gl.css";
+import "../maplibre-worker.ts";
 import type { ExpressionSpecification } from "maplibre-gl";
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";

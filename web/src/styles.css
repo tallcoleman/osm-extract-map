@@ -1,0 +1,561 @@
+/* Colour tokens. web/src/lib/contrast.test.ts checks these pairs meet WCAG contrast. */
+:root {
+  --bg: #ffffff;
+  --surface: #f5f6f7;
+  --border: #d4d8dd;
+  --text: #1d2125;
+  --text-muted: #59616a;
+  --accent: #0b5cad;
+  --accent-bg: #e3eefa;
+  --focus: #0b5cad;
+  --warning-bg: #fff1c7;
+  --warning-text: #6b4500;
+  --notice-bg: #e3eefa;
+  --notice-text: #0a3d6b;
+  --error-bg: #fde8e8;
+  --error-text: #8a1c1c;
+
+  color-scheme: light;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+}
+
+h1 {
+  font-size: 1.35rem;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+p {
+  margin: 0 0 0.5rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+/* Layout */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  height: 100%;
+}
+
+.sidebar {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.map {
+  position: relative;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.map-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+.map-loading {
+  padding: 1rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 767px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55vh auto;
+    height: auto;
+  }
+
+  .map {
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar {
+    overflow: visible;
+    border-right: 0;
+  }
+}
+
+/* Sidebar sections */
+
+.header,
+.panel,
+.footer {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.header p {
+  color: var(--text-muted);
+}
+
+.provider-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.provider-links a {
+  font-weight: 600;
+  display: inline-block;
+  padding: 0.5rem 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+fieldset {
+  border: 0;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  min-width: 0;
+}
+
+legend {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  padding: 0;
+}
+
+/* Provider toggle: a row of segments built from radio buttons. */
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.segmented legend {
+  width: 100%;
+}
+
+.segmented label {
+  flex: 1;
+  position: relative;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.segmented label > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  margin-left: -1px;
+  background: var(--bg);
+}
+
+.segmented label:first-of-type > span {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+}
+
+.segmented label:last-of-type > span {
+  border-radius: 0 6px 6px 0;
+}
+
+.segmented input:checked + span {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  font-weight: 600;
+  position: relative;
+}
+
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  position: relative;
+}
+
+.segmented label.disabled > span {
+  color: var(--text-muted);
+  background: var(--surface);
+  text-decoration: line-through;
+}
+
+.levels label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+.levels input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.legend {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.legend-line {
+  flex: none;
+  width: 28px;
+  border-top: 2px solid var(--text);
+}
+
+.legend-coarser {
+  border-top-style: dashed;
+  opacity: 0.6;
+}
+
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.provider-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Badges always carry text, never colour alone. */
+.badge {
+  display: inline-block;
+  margin: 0.25rem 0.25rem 0 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.badge-notice {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+
+/* Buttons */
+
+.text-button,
+.link-button,
+.icon-button,
+.copy-button,
+.error button {
+  cursor: pointer;
+}
+
+.text-button,
+.error button {
+  min-height: 36px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.icon-button {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.icon-button:hover,
+.text-button:hover {
+  background: var(--surface);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+}
+
+.copy-button {
+  min-height: 32px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+/* Rows used by the extract list and the overlap picker. */
+.row-button {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-button:hover {
+  background: var(--surface);
+}
+
+.row-button[aria-pressed="true"] {
+  background: var(--accent-bg);
+}
+
+.check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 2px solid var(--text-muted);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.row-button[aria-pressed="true"] .check {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--bg);
+}
+
+.row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row-name {
+  font-weight: 600;
+}
+
+.row-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* Selection */
+
+.total {
+  font-size: 1.05rem;
+}
+
+.totals ul {
+  margin: 0 0 0.5rem;
+  padding-left: 1.1rem;
+}
+
+.selected-list {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+
+.selected-item {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.selected-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.selected-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin-top: 0.4rem;
+}
+
+/* Extract list */
+
+.list-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.list-controls input,
+.list-controls select {
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.list-controls input {
+  flex: 1;
+  min-width: 0;
+}
+
+.extract-list,
+.picker ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Footer */
+
+.footer .updated {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.footer .updated li {
+  margin-bottom: 0.2rem;
+}
+
+/* Map overlays */
+
+.map-tooltip {
+  position: absolute;
+  z-index: 2;
+  max-width: 300px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.picker {
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.picker h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.maplibregl-popup-content {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+}
