@@ -6,7 +6,10 @@ coverage
 .cache
 data
 web/dist
-# Local development MapTiler key: production writes config.json at container start.
-web/public/config.json
 compose*.yaml
 docker/*.Dockerfile
+.env
+
+# Local development MapTiler key: production writes config.json at container start.
+web/public/config.json
+
