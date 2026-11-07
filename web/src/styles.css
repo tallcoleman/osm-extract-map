@@ -119,9 +119,11 @@ select {
 @media (max-width: 767px) {
   .app {
     grid-template-columns: 1fr;
-    /* About 40% map and 60% sidebar; dvh leaves out the browser's toolbars on phones. */
+    /* About 40% map and 60% sidebar. svh (the viewport with the browser's toolbars
+       shown) stays fixed while scrolling; dvh changed as the toolbars collapsed,
+       resizing and redrawing the map mid-scroll on iOS. */
     grid-template-rows: 40vh auto;
-    grid-template-rows: 40dvh auto;
+    grid-template-rows: 40svh auto;
     height: auto;
   }
 
@@ -138,10 +140,10 @@ select {
     border-right: 0;
   }
 
-  /* Keeps the overlap picker inside the shorter map. */
-  .picker {
-    max-height: 28vh;
-    max-height: 28dvh;
+  /* No rubber-band bounce at the ends of the page, which dragged the sticky map. */
+  html,
+  body {
+    overscroll-behavior-y: none;
   }
 }
 
@@ -584,6 +586,44 @@ legend {
   max-height: 320px;
   overflow-y: auto;
   font-size: 14px;
+}
+
+/* Phones: the picker docks inside the map instead of a popup at the tap, so it
+   always fits. It docks at the top, clear of the zoom and location buttons on
+   the right, or at the bottom when the tap was in the top half. */
+.picker-panel {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  right: 52px;
+  max-height: calc(100% - 16px);
+  display: flex;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+.picker-panel-low {
+  top: auto;
+  bottom: 8px;
+  right: 8px;
+}
+
+.picker-panel .picker {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+
+.picker-panel .picker ul {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .picker-head {

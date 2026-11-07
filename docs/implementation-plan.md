@@ -478,17 +478,18 @@ Accessibility tests:
 
 Run before the first deploy and after major frontend changes:
 
-- [ ] Map loads real data with both providers at every level, including the coarser fallback styling.
-- [ ] Selection, totals, copy buttons and provider links work.
-- [ ] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
-- [ ] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
+- [x] Map loads real data with both providers at every level, including the coarser fallback styling.
+- [x] Selection, totals, copy buttons and provider links work.
+- [x] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
+- [x] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
 - [ ] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
 - [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
-- [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`. (`/data/../` with `curl --path-as-is` returns the site's `index.html`: nginx resolves it to `/`, which is fine.)
+- [x] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
+  (`/data/../` with `curl --path-as-is` returns the site's `index.html`: nginx resolves it to `/`, which is fine.)
 - [ ] `web` isn't reachable on the host's public IP, only through the proxy.
-- [ ] The production MapTiler key is restricted to the production origin.
-- [ ] `/debug.html` returns 404 in production (the debug map is dev only).
+- [x] The production MapTiler key is restricted to the production origin.
+- [x] `/debug.html` returns 404 in production (the debug map is dev only).
 
 ### Keeping fixtures honest
 
@@ -690,12 +691,19 @@ Checked with a local `docker compose up` (arm64, on fresh volumes):
 - First Coolify deploy (amd64) failed in the test stage: the pipeline golden-file test takes about 1 s natively but over 5 s (vitest's default limit) on a slower or emulated amd64 build, so it now has a 60 s limit. Every other test stays under about 1 s there. Reproduced and checked with `docker buildx build --platform linux/amd64`.
 - One amd64 `npm ci` quietly left out `lightningcss-linux-x64-musl` (npm skips an optional platform package whose install fails), so `vite build` failed. The lock file is fine and clean installs had it, but a cached broken layer would keep failing, so the install step now loads lightningcss, rolldown, tsc and oxlint and fails if any is missing.
 
+After the first deploy, from testing on a phone:
+
+- The phone layout sized the map with `40dvh`, which changes as iOS Safari's toolbars collapse, so the map resized and redrew while scrolling. It now uses `40svh` (fixed), and `overscroll-behavior-y: none` stops the rubber-band bounce dragging the sticky map.
+- The overlap picker, a MapLibre popup at the tap, often didn't fit in the short phone map. Below 768px it's now a panel docked inside the map: at the top, clear of the zoom and location buttons, or at the bottom when the tap was in the top half.
+- A CSP error in Firefox's console about a blocked inline script isn't from the site: the served HTML and bundle contain no inline script, and a clean headless Chrome shows no violation. It's most likely a browser extension injecting one.
+
 Still to do (needs the owner's accounts):
 
-- [ ] Restrict the production MapTiler key to the production origin, and the development key to `localhost`.
-- [ ] Deploy to Coolify as a compose project: set `MAPTILER_KEY` (and optionally `CRON_SCHEDULE`), and point the domain at the `web` service on port 80.
+- [x] Restrict the production MapTiler key to the production origin, and the development key to `localhost`.
+- [x] Deploy to Coolify as a compose project: set `MAPTILER_KEY` (and optionally `CRON_SCHEDULE`), and point the domain at the `web` service on port 80.
 - [ ] Run the release checklist against production (the phone, VoiceOver and real-device performance items haven't been done).
-- [ ] One manual OSM-FR run in production: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (about 1.5 hours). The redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it.
+- [ ] One manual OSM-FR run in production: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (about 1.5 hours).
+  The redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it.
 - [ ] Confirm the first scheduled run (Monday 03:00 UTC by default) in the updater's logs.
 
 ### Phase 5: polish

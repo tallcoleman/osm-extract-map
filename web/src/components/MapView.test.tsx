@@ -169,6 +169,30 @@ describe("MapView pointer", () => {
     expect(document.activeElement).toBe(fakeMap.getCanvas());
   });
 
+  it("docks the picker inside the map on phones instead of a popup", async () => {
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: q === "(max-width: 767px)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as never;
+    try {
+      const user = userEvent.setup();
+      setup();
+      // A click in the top half of the map docks the panel at the bottom, and vice versa.
+      act(() => mapProps.onClick(mouseEvent(["geofabrik:canada", "geofabrik:quebec"], 100, 100)));
+      const dialog = screen.getByRole("dialog", { name: "2 extracts here" });
+      expect(screen.queryByTestId("popup")).toBeNull();
+      expect(dialog.parentElement!.className).toBe("picker-panel picker-panel-low");
+      act(() => mapProps.onClick(mouseEvent(["geofabrik:canada", "geofabrik:quebec"], 100, 500)));
+      expect(screen.getByRole("dialog").parentElement!.className).toBe("picker-panel");
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      // @ts-expect-error jsdom has no matchMedia
+      delete window.matchMedia;
+    }
+  });
+
   it("closes the picker with its close button, or a click elsewhere", async () => {
     const user = userEvent.setup();
     setup();
@@ -296,7 +320,11 @@ describe("MapView zoom", () => {
   });
 
   it("doesn't animate with reduced motion", () => {
-    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as never;
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: q.includes("reduced-motion"),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as never;
     try {
       setup({ zoomTo: { bbox: [1, 2, 3, 4], id: 1 } });
       expect(fakeMap.fitBounds.mock.calls[0]![1].duration).toBe(0);

@@ -12,6 +12,7 @@ import {
 import type { BBox } from "../lib/geo.ts";
 import { HATCH_IMAGE, hatchImage } from "../lib/hatch.ts";
 import { type Level, levelFilters } from "../lib/levels.ts";
+import { NARROW_SCREEN, useMediaQuery } from "../lib/media.ts";
 import { pickerCandidates } from "../lib/picker.ts";
 import { PROVIDER_ATTRIBUTION, PROVIDER_COLORS, providerOfKey } from "../lib/providers.ts";
 import { OverlapPicker } from "./OverlapPicker.tsx";
@@ -72,7 +73,10 @@ function MapViewImpl(props: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const [cursorKeys, setCursorKeys] = useState<string[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; width: number; height: number; extracts: Extract[] } | null>(null);
-  const [picker, setPicker] = useState<{ longitude: number; latitude: number; extracts: Extract[] } | null>(null);
+  // `low`: the click was in the top half of the map, so the phone panel docks at the bottom.
+  const [picker, setPicker] = useState<{ longitude: number; latitude: number; low: boolean; extracts: Extract[] } | null>(null);
+  // On phones the map is short, so the picker is a panel inside it rather than a popup at the tap.
+  const narrow = useMediaQuery(NARROW_SCREEN);
   // The gaps layer waits for its pattern image, which can only be added once the style has loaded.
   const [hatchReady, setHatchReady] = useState(false);
   const hoverTimer = useRef<number | undefined>(undefined);
@@ -165,7 +169,7 @@ function MapViewImpl(props: MapViewProps) {
     const found = extractsAt(e.features);
     if (found.length > 1) {
       setTooltip(null);
-      setPicker({ longitude: e.lngLat.lng, latitude: e.lngLat.lat, extracts: found });
+      setPicker({ longitude: e.lngLat.lng, latitude: e.lngLat.lat, low: e.point.y < e.target.getContainer().clientHeight / 2, extracts: found });
       return;
     }
     setPicker(null);
@@ -176,6 +180,12 @@ function MapViewImpl(props: MapViewProps) {
     setPicker(null);
     mapRef.current?.getCanvas().focus();
   }, []);
+
+  const pickerContent = picker && (
+    <OverlapPicker
+      key={`${picker.longitude},${picker.latitude}`}
+      extracts={picker.extracts} selected={selected} onToggle={onToggle} onClose={closePicker} />
+  );
 
   return (
     <div className="map-wrap">
@@ -259,7 +269,7 @@ function MapViewImpl(props: MapViewProps) {
             </Source>
           );
         })}
-        {picker && (
+        {picker && !narrow && (
           <Popup
             longitude={picker.longitude}
             latitude={picker.latitude}
@@ -268,12 +278,11 @@ function MapViewImpl(props: MapViewProps) {
             maxWidth="320px"
             onClose={() => setPicker(null)}
           >
-            <OverlapPicker
-              key={`${picker.longitude},${picker.latitude}`}
-              extracts={picker.extracts} selected={selected} onToggle={onToggle} onClose={closePicker} />
+            {pickerContent}
           </Popup>
         )}
       </MapGL>
+      {picker && narrow && <div className={picker.low ? "picker-panel picker-panel-low" : "picker-panel"}>{pickerContent}</div>}
       {tooltip && !picker && <HoverTooltip {...tooltip} />}
     </div>
   );
