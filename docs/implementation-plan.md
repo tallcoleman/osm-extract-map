@@ -492,8 +492,8 @@ Run after major frontend or deployment changes (last run against production on 2
 - [x] `web` isn't reachable on the host's public IP, only through the proxy.
 - [x] The production MapTiler key is restricted to the production origin.
 - [x] `/debug.html` returns 404 in production (the debug map is dev only).
-- [ ] The favicon shows in the browser tab, and `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` and `/og-image.png` return 200 with the security headers (added in phase 5).
-- [ ] `SITE_URL` is set, the page source has `og:url` and `og:image` with the production URL, and a pasted link shows the preview card.
+- [x] The favicon shows in the browser tab, and `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` and `/og-image.png` return 200 with the security headers (added in phase 5).
+- [x] `SITE_URL` is set, the page source has `og:url` and `og:image` with the production URL, and a pasted link shows the preview card.
 
 ### Keeping fixtures honest
 
