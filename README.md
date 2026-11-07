@@ -1,6 +1,8 @@
 # osm-extract-map
 Simple and easy to use web map to show the bounds of extracts offered by Geofabrik and OSM-FR
 
+Live at https://extracts-map.tallcolemanprojects.ca/
+
 ## Data sources
 
 - Extract boundaries, sizes and links: [Geofabrik](https://download.geofabrik.de/) and [OpenStreetMap France](https://download.openstreetmap.fr/), from OpenStreetMap data © OpenStreetMap contributors.
@@ -33,3 +35,5 @@ On first start the updater fetches Geofabrik straight away. OpenStreetMap France
 - OpenStreetMap France (about 1.5 hours): `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'`, then follow it with `docker compose logs -f updater`. (Output from a detached `exec` is otherwise lost; writing to the main process's output puts it in the container logs.)
 
 A run started while another is in progress exits straight away.
+
+To seed OpenStreetMap France on a new server without crawling it again, copy a local HTTP cache (`.cache/http`) into the updater's cache volume and run `npm run update-data -- --providers osmfr --offline` in the container; see the phase 4 results in `docs/implementation-plan.md` for the exact commands.

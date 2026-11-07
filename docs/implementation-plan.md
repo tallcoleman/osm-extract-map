@@ -358,6 +358,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - Controls are keyboard-navigable with visible focus, and badges have text labels (not colour alone).
 - Below roughly 768px, the sidebar becomes a draggable bottom sheet with collapsed, half and full positions.
 - Tap targets are at least 44px.
+- Each sidebar section and control group has an H2 (Providers and Level inside their fieldset legends), so screen reader heading navigation reaches them. Visual-only samples (legend lines, swatches) are `aria-hidden`, with the same information in text.
 
 ## Deployment
 
@@ -384,8 +385,8 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 ### Supply chain and image hardening (both images)
 
 - Pin base images (`node`, `nginx`) by digest, with the tag kept alongside in a comment for readability. Update them deliberately.
-- Download `supercronic` from a pinned release and check it against the SHA1 checksum published with that release. The build fails on a mismatch.
-- The updater's runtime stage installs with `npm ci --omit=dev`, so test and build tools never ship in the image. Try `--ignore-scripts` in every `npm ci`; keep it wherever the build still works.
+- Download `supercronic` from a pinned release and check it against the SHA1 checksum published with that release (and the SHA-256 GitHub records for the asset). The build fails on a mismatch.
+- The updater's runtime stage installs with `npm ci --omit=dev`, so test and build tools never ship in the image. Every `npm ci` uses `--ignore-scripts`.
 - The shared `test` stage is never the final stage of either Dockerfile.
 - Commit `package-lock.json` and review its diff when dependencies change.
 
@@ -476,13 +477,13 @@ Accessibility tests:
 
 ### Release checklist (manual, instead of end-to-end tests)
 
-Run before the first deploy and after major frontend changes:
+Run after major frontend or deployment changes (last run against production on 2026-11-07; see the phase 4 results):
 
 - [x] Map loads real data with both providers at every level, including the coarser fallback styling.
 - [x] Selection, totals, copy buttons and provider links work.
 - [x] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
 - [x] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
-- [ ] Quick screen reader pass (VoiceOver) through the main flow.
+- [x] Quick screen reader pass (VoiceOver) through the main flow.
 - [x] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
 - [x] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
 - [x] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
@@ -667,9 +668,9 @@ Decisions and findings:
 
 **Exit:** the production site is live, the scheduled update runs, and the manual update works.
 
-#### Phase 4 progress (2026-11-07)
+#### Phase 4 results (2026-11-07)
 
-Done locally; the production steps are still open (see the list at the end).
+Done. The site is live at https://extracts-map.tallcolemanprojects.ca/, deployed on Coolify as a compose project, with Geofabrik and OSM-FR data. 537 tests (185 of them frontend), updater and shared code at 100% coverage. The one open item is confirming the first scheduled run (below).
 
 What's in:
 
@@ -697,14 +698,17 @@ After the first deploy, from testing on a phone:
 - The overlap picker, a MapLibre popup at the tap, often didn't fit in the short phone map. Below 768px it's now a panel docked inside the map: at the top, clear of the zoom and location buttons, or at the bottom when the tap was in the top half.
 - A CSP error in Firefox's console about a blocked inline script isn't from the site: the served HTML and bundle contain no inline script, and a clean headless Chrome shows no violation. It's most likely a browser extension injecting one.
 
-Still to do (needs the owner's accounts):
+Production steps:
 
 - [x] Restrict the production MapTiler key to the production origin, and the development key to `localhost`.
 - [x] Deploy to Coolify as a compose project: set `MAPTILER_KEY` (and optionally `CRON_SCHEDULE`), and point the domain at the `web` service on port 80.
-- [ ] Run the release checklist against production. Everything that can be checked from outside is done (see below); the real phone, VoiceOver and real-device performance items are left.
-- [x] OSM-FR in production, without a new crawl: the local HTTP cache was copied into the updater's cache volume and built with `--providers osmfr --offline` (0 requests, `fetchedAt` kept from the local crawl on 2026-11-06). Cache file names are hashes of the URL, so the files work anywhere. Busybox `tar -k` stops at the first existing file instead of skipping it, so unpack to a temporary directory and `cp -n` from there:
-  `tar -C .cache/http -czf - . | ssh <server> 'docker exec -i <container> sh -c "rm -rf /tmp/cache-import && mkdir /tmp/cache-import && tar -xzf - -C /tmp/cache-import && cp -n /tmp/cache-import/* /cache/ && rm -rf /tmp/cache-import"'`, then `docker exec <container> npm run update-data -- --providers osmfr --offline`. For a later online run: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (the redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it).
-- [ ] Confirm the first scheduled run (Monday 03:00 UTC by default) in the updater's logs.
+- [x] Run the release checklist against production.
+  The externally checkable items were run with headless Chrome and curl (see below); the owner checked the real phone, VoiceOver and real-device performance items.
+- [x] OSM-FR in production, without a new crawl: the local HTTP cache was copied into the updater's cache volume and built with `--providers osmfr --offline` (0 requests, `fetchedAt` kept from the local crawl on 2026-11-06).
+  Cache file names are hashes of the URL, so the files work anywhere.
+  Busybox `tar -k` stops at the first existing file instead of skipping it, so unpack to a temporary directory and `cp -n` from there: `tar -C .cache/http -czf - . | ssh <server> 'docker exec -i <container> sh -c "rm -rf /tmp/cache-import && mkdir /tmp/cache-import && tar -xzf - -C /tmp/cache-import && cp -n /tmp/cache-import/* /cache/ && rm -rf /tmp/cache-import"'`, then `docker exec <container> npm run update-data -- --providers osmfr --offline`.
+  For a later online run: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (the redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it).
+- [ ] Confirm the first scheduled run (Monday 2026-11-09, 03:00 UTC) in the updater's logs and that its healthcheck stays healthy. The owner has a reminder set; nothing else blocks closing phase 4.
 
 Release checklist against production (2026-11-07, headless Chrome and curl):
 
@@ -719,9 +723,16 @@ Release checklist against production (2026-11-07, headless Chrome and curl):
 - Timings over the network (SwiftShader, so pessimistic): map `load` 4.8 s, first `idle` 5.0 s, JS heap 126 MB with both providers at leaf level.
 - axe in Chrome (which, unlike jsdom, checks contrast) with an extract selected, desktop and phone: one issue, the "Updates" copy button's accessible name ("Copy replication URL for …") didn't contain its visible text. It's now "Copy updates (replication) URL for …"; axe reports no issues after the change.
 
+VoiceOver pass by the owner (2026-11-07):
+
+- "Providers", "Level" and "Legend" weren't headings, so heading navigation skipped them. They're now H2s; Providers and Level keep their fieldsets (the H2 sits inside the `<legend>`), so the radio groups are still announced by name.
+- The legend's line samples are `aria-hidden`, so nothing said which map style each entry meant. Each entry now starts with screen-reader-only text: "Solid line:", "Faded dashed line:", "Hatched area:".
+- VoiceOver mispronounces "Geofabrik". Left as is: WCAG doesn't require marking the language of proper names, and `lang="de"` would only work in visible text, not in accessible names like "Copy … URL for …", so the name would be read two ways. The owner decided to leave it: it's a brand name.
+
 ### Phase 5: polish
 
 - Mobile bottom sheet, accessibility pass (keyboard, screen reader labels, contrast; extends the automated tests with a manual screen reader run), about modal (what this is, what "coarser" means, the replication badges, data sources, refresh schedule: Geofabrik weekly, OSM-FR occasionally), empty/error states (data failed to load, stale provider), favicon and meta tags.
+- Carried over from phase 4: start MapLibre's compact attribution collapsed on phones (it starts expanded and covers the bottom of the short map). The phase 4 VoiceOver pass covers the main flow; repeat it after the bottom sheet and about modal.
 
 ### Phase 6: optional features (decide individually)
 
