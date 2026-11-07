@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { parentPaths } from "../lib/parents.ts";
 import { visibleExtracts } from "../lib/search.ts";
 import { EXTRACTS, expectNoAxeViolations } from "../test/data.ts";
 import { ExtractList } from "./ExtractList.tsx";
@@ -10,6 +11,7 @@ const items = visibleExtracts(EXTRACTS, { providers: ["geofabrik", "osmfr"], lev
 function setup(overrides: Partial<Parameters<typeof ExtractList>[0]> = {}) {
   const props = {
     items,
+    parents: parentPaths(EXTRACTS),
     selected: ["osmfr:monaco"],
     query: "",
     sort: "name" as const,
@@ -31,6 +33,7 @@ describe("ExtractList", () => {
     expect(rows().map((r) => r.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
     expect(rows()[0]!.textContent).toContain("No change files");
     expect(rows()[3]!.textContent).toContain("Geofabrik · 1.2 GB · coarser");
+    expect(rows().map((r) => r.querySelector(".row-path")?.textContent ?? null)).toEqual([null, "Canada › Québec", "Canada", "Canada"]);
     expect(screen.getByText("4 extracts")).toBeTruthy();
     await expectNoAxeViolations(container);
   });

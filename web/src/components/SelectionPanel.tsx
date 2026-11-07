@@ -10,6 +10,8 @@ import { ReplicationBadge } from "./ReplicationBadge.tsx";
 
 interface Props {
   extracts: readonly Extract[];
+  /** Parent path of each extract by key, e.g. "Europe › Germany". */
+  parents: ReadonlyMap<string, string>;
   onRemove: (key: string) => void;
   onClear: () => void;
   onZoom: (key: string) => void;
@@ -27,7 +29,7 @@ const COPY_URLS = [
   ["replication", "Updates", "replication URL"],
 ] as const;
 
-export function SelectionPanel({ extracts, onRemove, onClear, onZoom }: Props) {
+export function SelectionPanel({ extracts, parents, onRemove, onClear, onZoom }: Props) {
   const totals = selectionTotals(extracts);
   const summary = extracts.length ? `${formatCount(totals.count, "extract", "extracts")} selected, ${sizeText(totals)}` : "";
 
@@ -46,7 +48,7 @@ export function SelectionPanel({ extracts, onRemove, onClear, onZoom }: Props) {
         {summary}
       </p>
       {extracts.length === 0 ? (
-        <p className="muted">Click areas on the map, or extracts in the list, to add them and see their total download size.</p>
+        <p className="muted">Click an area on the map or list below.</p>
       ) : (
         <>
           <div className="totals">
@@ -66,6 +68,7 @@ export function SelectionPanel({ extracts, onRemove, onClear, onZoom }: Props) {
           <ul className="selected-list">
             {extracts.map((e) => {
               const page = safeHref(e.urls.page);
+              const path = parents.get(e.key);
               return (
                 <li key={e.key} className="selected-item">
                   <div className="selected-head">
@@ -76,6 +79,7 @@ export function SelectionPanel({ extracts, onRemove, onClear, onZoom }: Props) {
                       ×
                     </button>
                   </div>
+                  {path && <p className="row-path">{path}</p>}
                   <p className="row-meta">
                     <ProviderTag provider={e.provider} /> · {formatSize(e.sizeBytes)} · {replicationDetail(e)}
                   </p>

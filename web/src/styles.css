@@ -119,7 +119,9 @@ select {
 @media (max-width: 767px) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: 55vh auto;
+    /* About 40% map and 60% sidebar; dvh leaves out the browser's toolbars on phones. */
+    grid-template-rows: 40vh auto;
+    grid-template-rows: 40dvh auto;
     height: auto;
   }
 
@@ -135,32 +137,55 @@ select {
     overflow: visible;
     border-right: 0;
   }
+
+  /* Keeps the overlap picker inside the shorter map. */
+  .picker {
+    max-height: 28vh;
+    max-height: 28dvh;
+  }
 }
 
 /* Sidebar sections */
 
 .header,
-.panel,
-.footer {
+.panel {
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--border);
 }
 
-.header p {
+.intro {
   color: var(--text-muted);
 }
 
-.provider-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  margin: 0;
+/* "Providers:" on the left, one provider per line beside it. */
+.providers {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: baseline;
 }
 
-.provider-links a {
+.providers-label {
   font-weight: 600;
-  display: inline-block;
-  padding: 0.5rem 0;
+}
+
+.providers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.providers li {
+  padding: 0.3rem 0;
+}
+
+.providers a {
+  font-weight: 600;
+}
+
+/* Wraps as a whole onto the next line rather than splitting the date. */
+.providers .updated {
+  white-space: nowrap;
 }
 
 .panel-head {
@@ -197,6 +222,8 @@ legend {
 .segmented {
   display: flex;
   flex-wrap: wrap;
+  /* Keeps the z-index below inside the toggle, so it can't rise above the sticky map on phones. */
+  isolation: isolate;
 }
 
 .segmented legend {
@@ -237,17 +264,20 @@ legend {
   border-radius: 0 6px 6px 0;
 }
 
+/* Raised above the next segment, which overlaps this one's right border by 1px. */
 .segmented input:checked + span {
   background: var(--accent-bg);
   border-color: var(--accent);
   font-weight: 600;
   position: relative;
+  z-index: 1;
 }
 
 .segmented input:focus-visible + span {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   position: relative;
+  z-index: 2;
 }
 
 .segmented label.disabled > span {
@@ -271,9 +301,14 @@ legend {
   accent-color: var(--accent);
 }
 
-.legend {
+.legend-title {
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.legend ul {
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0;
   color: var(--text-muted);
   font-size: 0.85rem;
@@ -305,10 +340,10 @@ legend {
   border-radius: 2px;
 }
 
-.provider-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
+/* Inline, not flex, so the name shares a baseline with the text after it. */
+.provider-tag .swatch {
+  margin-right: 0.3em;
+  vertical-align: -0.05em;
 }
 
 /* Badges always carry text, never colour alone. */
@@ -375,6 +410,9 @@ legend {
 }
 
 .copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   min-height: 32px;
   padding: 0 0.6rem;
   border: 1px solid var(--border);
@@ -430,6 +468,12 @@ legend {
 
 .row-name {
   font-weight: 600;
+}
+
+.row-path {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .row-meta {
@@ -509,24 +553,15 @@ legend {
   padding: 0;
 }
 
-/* Footer */
-
-.footer .updated {
-  list-style: none;
-  margin: 0 0 0.5rem;
-  padding: 0;
-}
-
-.footer .updated li {
-  margin-bottom: 0.2rem;
-}
-
 /* Map overlays */
 
 .map-tooltip {
   position: absolute;
   z-index: 2;
-  max-width: 300px;
+  left: 0;
+  top: 0;
+  /* HoverTooltip moves it next to the cursor after measuring it. */
+  max-width: min(300px, calc(100% - 16px));
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
   background: var(--bg);

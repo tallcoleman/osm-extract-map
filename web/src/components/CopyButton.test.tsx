@@ -21,6 +21,7 @@ describe("CopyButton", () => {
     writeText.mockResolvedValue();
     const button = setup();
     expect(button.textContent).toBe(".pbf");
+    expect(button.querySelector("svg.copy-icon")).toBeTruthy();
     expect(button.title).toBe("https://download.geofabrik.de/m.pbf");
     await act(async () => button.click());
     expect(writeText).toHaveBeenCalledWith("https://download.geofabrik.de/m.pbf");

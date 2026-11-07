@@ -52,7 +52,7 @@ describe("LevelSelector", () => {
     expect(onChange).toHaveBeenCalledWith(2);
     rerender(<LevelSelector value={2} onChange={onChange} />);
     expect(screen.getByRole("radio", { name: "Region" })).toHaveProperty("checked", true);
-    expect(screen.getByRole("list", { name: "Line styles" }).textContent).toContain("Coarser: nothing at this level here");
+    expect(screen.getByRole("list", { name: "Legend" }).textContent).toContain("Coarser: nothing at this level here");
     await expectNoAxeViolations(container);
   });
 });

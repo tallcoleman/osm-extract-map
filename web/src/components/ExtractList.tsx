@@ -6,6 +6,8 @@ import { ReplicationBadge } from "./ReplicationBadge.tsx";
 
 interface Props {
   items: readonly ListItem[];
+  /** Parent path of each extract by key, e.g. "Europe › Germany". */
+  parents: ReadonlyMap<string, string>;
   selected: readonly string[];
   query: string;
   sort: SortOrder;
@@ -16,7 +18,7 @@ interface Props {
   onHighlight: (key: string | null) => void;
 }
 
-function ExtractListImpl({ items, selected, query, sort, onQueryChange, onSortChange, onActivate, onHighlight }: Props) {
+function ExtractListImpl({ items, parents, selected, query, sort, onQueryChange, onSortChange, onActivate, onHighlight }: Props) {
   const id = useId();
   const sorted = useMemo(() => sortItems(items, sort), [items, sort]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -49,7 +51,9 @@ function ExtractListImpl({ items, selected, query, sort, onQueryChange, onSortCh
         {query.trim() && ` matching “${query.trim()}”`}
       </p>
       <ul className="extract-list">
-        {sorted.map(({ extract: e, coarser }) => (
+        {sorted.map(({ extract: e, coarser }) => {
+          const path = parents.get(e.key);
+          return (
           <li key={e.key}>
             <button
               type="button"
@@ -64,6 +68,7 @@ function ExtractListImpl({ items, selected, query, sort, onQueryChange, onSortCh
               <span className="check" aria-hidden="true" />
               <span className="row-main">
                 <span className="row-name">{e.name}</span>
+                {path && <span className="row-path">{path}</span>}
                 <span className="row-meta">
                   <ProviderTag provider={e.provider} /> · {formatSize(e.sizeBytes)}
                   {coarser && <> · coarser</>}
@@ -72,7 +77,8 @@ function ExtractListImpl({ items, selected, query, sort, onQueryChange, onSortCh
               </span>
             </button>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

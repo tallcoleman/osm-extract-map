@@ -2,21 +2,23 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EXTRACTS, expectNoAxeViolations, makeExtract } from "../test/data.ts";
+import { parentPaths } from "../lib/parents.ts";
 import { SelectionPanel } from "./SelectionPanel.tsx";
 
 const byKey = new Map(EXTRACTS.map((e) => [e.key, e]));
+const parents = parentPaths(EXTRACTS);
 const pick = (...keys: string[]) => keys.map((k) => byKey.get(k)!);
 
 function setup(extracts = pick("geofabrik:quebec")) {
   const handlers = { onRemove: vi.fn(), onClear: vi.fn(), onZoom: vi.fn() };
-  const view = render(<SelectionPanel extracts={extracts} {...handlers} />);
+  const view = render(<SelectionPanel extracts={extracts} parents={parents} {...handlers} />);
   return { ...view, ...handlers };
 }
 
 describe("SelectionPanel", () => {
   it("explains what to do when nothing is selected", async () => {
     const { container } = setup([]);
-    expect(screen.getByText(/Click areas on the map/)).toBeTruthy();
+    expect(screen.getByText(/Click an area on the map or list below/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
     await expectNoAxeViolations(container);
   });
@@ -26,6 +28,13 @@ describe("SelectionPanel", () => {
     expect(screen.getByText(/Estimated total/).textContent).toBe("Estimated total: about 1.8 GB (+ 1 of unknown size)");
     expect(screen.getByText(/^Geofabrik:/).textContent).toBe("Geofabrik: 2 extracts, about 1.2 GB (+ 1 of unknown size)");
     expect(screen.getByText(/^OSM-FR:/).textContent).toBe("OSM-FR: 1 extract, about 583 MB");
+  });
+
+  it("shows each extract's parent regions", () => {
+    setup(pick("osmfr:nord_du_quebec", "osmfr:monaco"));
+    const [nord, monaco] = screen.getAllByRole("listitem").filter((li) => li.classList.contains("selected-item"));
+    expect(nord!.querySelector(".row-path")!.textContent).toBe("Canada › Québec");
+    expect(monaco!.querySelector(".row-path")).toBeNull();
   });
 
   it("has no breakdown for one provider, and says when no size is known", () => {

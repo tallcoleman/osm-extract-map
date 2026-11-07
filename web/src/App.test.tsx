@@ -105,7 +105,7 @@ describe("App controls", () => {
     await user.click(panel.getByRole("button", { name: "Remove Ontario from selection" }));
     expect(panel.queryByRole("button", { name: "Zoom to Ontario" })).toBeNull();
     await user.click(panel.getByRole("button", { name: "Clear" }));
-    expect(panel.getByText(/Click areas on the map/)).toBeTruthy();
+    expect(panel.getByText(/Click an area on the map or list below/)).toBeTruthy();
   });
 
   it("selects from the map", async () => {
@@ -151,6 +151,7 @@ describe("App keyboard", () => {
       stops.push(el.getAttribute("aria-label") ?? (el.closest("label")?.textContent || el.textContent || el.tagName).trim());
     }
     expect(stops).toEqual([
+      "Source on GitHub ↗(opens in a new tab)",
       "Geofabrik ↗(opens in a new tab)",
       "OpenStreetMap France ↗(opens in a new tab)",
       "Both",
@@ -162,7 +163,6 @@ describe("App keyboard", () => {
       expect.stringContaining("Nord du Quebec"),
       expect.stringContaining("Ontario"),
       expect.stringContaining("Quebec"),
-      "Source on GitHub",
       // The map canvas comes after the sidebar.
       "CANVAS",
     ]);

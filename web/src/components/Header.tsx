@@ -1,25 +1,60 @@
-import { PROVIDERS } from "../../../shared/schema.ts";
+import { type Meta, PROVIDER_IDS, PROVIDERS, type ProviderId } from "../../../shared/schema.ts";
+import { formatDate } from "../lib/format.ts";
 
-export function Header() {
+export const REPO_URL = "https://github.com/tallcoleman/osm-extract-map";
+
+interface Props {
+  /** Absent while the data is loading; the update dates are left out then. */
+  meta?: Meta;
+  /** Providers whose boundaries failed to load in this browser. */
+  failed?: readonly ProviderId[];
+}
+
+function ExternalLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children} <span aria-hidden="true">↗</span>
+      <span className="sr-only">(opens in a new tab)</span>
+    </a>
+  );
+}
+
+function Warning({ children }: { children: string }) {
+  return (
+    <span className="badge badge-warning">
+      <span aria-hidden="true">⚠ </span>
+      {children}
+    </span>
+  );
+}
+
+export function Header({ meta, failed = [] }: Props) {
   return (
     <header className="header">
       <h1>OSM Extracts Map</h1>
-      <p>
-        Compare the OpenStreetMap extracts offered by Geofabrik and OpenStreetMap France, and estimate the download size for the
-        areas you need. Downloads stay on the providers' sites.
+      <p className="intro">
+        Compare OpenStreetMap extracts and estimate the download size for the areas you need.{" "}
+        <ExternalLink href={REPO_URL}>Source on GitHub</ExternalLink>
       </p>
-      <p className="provider-links">
-        <a href={PROVIDERS.geofabrik.homepage} target="_blank" rel="noopener noreferrer">
-          Geofabrik{" "}
-          <span aria-hidden="true">↗</span>
-          <span className="sr-only">(opens in a new tab)</span>
-        </a>
-        <a href={PROVIDERS.osmfr.homepage} target="_blank" rel="noopener noreferrer">
-          OpenStreetMap France{" "}
-          <span aria-hidden="true">↗</span>
-          <span className="sr-only">(opens in a new tab)</span>
-        </a>
-      </p>
+      <div className="providers">
+        <span id="providers-label" className="providers-label">
+          Providers:
+        </span>
+        <ul aria-labelledby="providers-label">
+          {PROVIDER_IDS.map((p) => {
+            const info = meta?.providers[p];
+            return (
+              <li key={p}>
+                <ExternalLink href={PROVIDERS[p].homepage}>{PROVIDERS[p].name}</ExternalLink>
+                {meta && " "}
+                {meta && <span className="muted updated">{info ? `(last checked ${formatDate(info.fetchedAt)})` : "(no data yet)"}</span>}
+                {info?.status === "stale" && <Warning>Last update failed; may be out of date</Warning>}
+                {failed.includes(p) && <Warning>Boundaries failed to load</Warning>}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </header>
   );
 }

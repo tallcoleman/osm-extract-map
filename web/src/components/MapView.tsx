@@ -1,6 +1,6 @@
 import type { ExpressionSpecification, MapGeoJSONFeature, MapSourceDataEvent } from "maplibre-gl";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import MapGL, { AttributionControl, Layer, type MapLayerMouseEvent, type MapRef, NavigationControl, Popup, Source } from "react-map-gl/maplibre";
+import MapGL, { AttributionControl, GeolocateControl, Layer, type MapLayerMouseEvent, type MapRef, NavigationControl, Popup, Source } from "react-map-gl/maplibre";
 import { type BoundaryCollection, type Extract, PROVIDER_IDS, type ProviderId } from "../../../shared/schema.ts";
 import type { BBox } from "../lib/geo.ts";
 import { type Level, levelFilters } from "../lib/levels.ts";
@@ -57,6 +57,8 @@ function MapViewImpl(props: MapViewProps) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; width: number; height: number; extracts: Extract[] } | null>(null);
   const [picker, setPicker] = useState<{ longitude: number; latitude: number; extracts: Extract[] } | null>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
+  // True while the map pans or zooms; hover is paused then.
+  const moving = useRef(false);
   // Feature state last set on the map, per key, so only changes are sent.
   const applied = useRef(new Map<string, FlagState>());
 
@@ -113,6 +115,7 @@ function MapViewImpl(props: MapViewProps) {
   const extractsAt = (features: readonly MapGeoJSONFeature[] | undefined) => pickerCandidates(features ?? [], extractsByKey);
 
   const onMouseMove = (e: MapLayerMouseEvent) => {
+    if (moving.current) return;
     const found = extractsAt(e.features);
     const { x, y } = e.point;
     const { clientWidth: width, clientHeight: height } = e.target.getContainer();
@@ -126,10 +129,17 @@ function MapViewImpl(props: MapViewProps) {
     }, HOVER_DELAY_MS);
   };
 
-  const onMouseLeave = () => {
+  const clearHover = () => {
     window.clearTimeout(hoverTimer.current);
     setCursorKeys([]);
     setTooltip(null);
+  };
+
+  // Hides the tooltip when the map moves, which matters most on touch screens,
+  // where there's no cursor to move off the area afterwards.
+  const onMoveStart = () => {
+    moving.current = true;
+    clearHover();
   };
 
   const onClick = (e: MapLayerMouseEvent) => {
@@ -157,7 +167,9 @@ function MapViewImpl(props: MapViewProps) {
         attributionControl={false}
         interactiveLayerIds={providers.map((p) => layerIds(p).fill)}
         onMouseMove={onMouseMove}
-        onMouseLeave={onMouseLeave}
+        onMouseLeave={clearHover}
+        onMoveStart={onMoveStart}
+        onMoveEnd={() => void (moving.current = false)}
         onClick={onClick}
         onSourceData={onSourceData}
         onLoad={() => performance.mark("map-load")}
@@ -165,6 +177,8 @@ function MapViewImpl(props: MapViewProps) {
         cursor={cursorKeys.length ? "pointer" : "grab"}
       >
         <NavigationControl position="top-right" showCompass={false} />
+        {/* Centres the map on the user's location; the position never leaves the browser. */}
+        <GeolocateControl position="top-right" fitBoundsOptions={{ maxZoom: 8 }} />
         <AttributionControl position="bottom-right" />
         {loaded.map((p) => {
           const ids = layerIds(p);

@@ -79,4 +79,5 @@ export function Popup({ children, longitude, latitude }: { children?: ReactNode;
 }
 
 export const NavigationControl = () => null;
+export const GeolocateControl = (props: Record<string, unknown>) => <div data-testid="geolocate" data-position={String(props.position)} />;
 export const AttributionControl = () => null;

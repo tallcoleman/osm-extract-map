@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { type Extract, PROVIDER_IDS } from "../../shared/schema.ts";
 import { ExtractList } from "./components/ExtractList.tsx";
-import { Footer } from "./components/Footer.tsx";
 import { Header } from "./components/Header.tsx";
 import { LevelSelector } from "./components/LevelSelector.tsx";
 import { MapView, type ZoomRequest } from "./components/MapView.tsx";
@@ -10,6 +9,7 @@ import { SelectionPanel } from "./components/SelectionPanel.tsx";
 import { bboxIndex } from "./lib/geo.ts";
 import type { Level } from "./lib/levels.ts";
 import { type AppData, loadData as defaultLoadData, loadStyleUrl as defaultLoadStyleUrl } from "./lib/load.ts";
+import { parentPaths } from "./lib/parents.ts";
 import { type ProviderChoice, visibleProviders } from "./lib/providers.ts";
 import { type SortOrder, visibleExtracts } from "./lib/search.ts";
 import { selectionReducer } from "./lib/selection.ts";
@@ -82,6 +82,7 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
   const available = useMemo(() => PROVIDER_IDS.filter((p) => data.boundaries[p]), [data]);
   const providers = useMemo(() => visibleProviders(choice, available), [choice, available]);
   const byKey = useMemo(() => new Map(data.extracts.map((e) => [e.key, e])), [data]);
+  const parents = useMemo(() => parentPaths(data.extracts), [data]);
   const bboxes = useMemo(() => bboxIndex(Object.values(data.boundaries)), [data]);
   const items = useMemo(() => visibleExtracts(data.extracts, { providers, level, query }), [data, providers, level, query]);
   const selectedExtracts = useMemo(() => selected.map((k) => byKey.get(k)).filter((e): e is Extract => !!e), [selected, byKey]);
@@ -107,14 +108,15 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
   return (
     <>
       <aside className="sidebar">
-      <Header />
+      <Header meta={data.meta} failed={data.failed} />
       <section className="panel controls" aria-label="Map options">
         <ProviderToggle value={choice} available={available} onChange={setChoice} />
         <LevelSelector value={level} onChange={setLevel} />
       </section>
-      <SelectionPanel extracts={selectedExtracts} onRemove={remove} onClear={clear} onZoom={zoom} />
+      <SelectionPanel extracts={selectedExtracts} parents={parents} onRemove={remove} onClear={clear} onZoom={zoom} />
       <ExtractList
         items={items}
+        parents={parents}
         selected={selected}
         query={query}
         sort={sort}
@@ -123,7 +125,6 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
         onActivate={activate}
         onHighlight={setHighlighted}
       />
-      <Footer meta={data.meta} failed={data.failed} />
       </aside>
       <main className="map" aria-label="Map of extract boundaries">
         {styleUrl ? (

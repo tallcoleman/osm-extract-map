@@ -40,6 +40,6 @@ export default defineConfig({
   // MapLibre loads its worker from a file next to its own module. Pre-bundling
   // moves the module into node_modules/.vite/deps/ without that file.
   optimizeDeps: { exclude: ["maplibre-gl"] },
-  // MapLibre alone is about 1.1 MB minified (300 KB gzipped).
-  build: { chunkSizeWarningLimit: 1200 },
+  // The app is about 1.4 MB minified (380 KB gzipped), almost all of it MapLibre.
+  build: { chunkSizeWarningLimit: 1500 },
 });

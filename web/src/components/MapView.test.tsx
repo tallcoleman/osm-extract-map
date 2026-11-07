@@ -186,7 +186,7 @@ describe("MapView pointer", () => {
     const tip = document.querySelector<HTMLElement>(".map-tooltip")!;
     expect(tip.textContent).toBe("Monaco · OSM-FR · 2.0 MB");
     expect(tip.getAttribute("aria-hidden")).toBe("true");
-    expect(tip.style.left).toBe("120px");
+    expect(tip.style.left).toBe("134px");
     expect(mapProps.cursor).toBe("pointer");
     expect(fakeMap.setFeatureState).toHaveBeenLastCalledWith({ source: "osmfr", id: "osmfr:monaco" }, { selected: false, hover: true });
 
@@ -211,6 +211,29 @@ describe("MapView pointer", () => {
     act(() => mapProps.onMouseLeave());
     act(() => vi.advanceTimersByTime(HOVER_DELAY_MS));
     expect(document.querySelector(".map-tooltip")).toBeNull();
+  });
+
+  it("hides the tooltip when the map moves, and pauses hover until it stops", () => {
+    vi.useFakeTimers();
+    setup();
+    act(() => mapProps.onMouseMove(mouseEvent(["osmfr:monaco"])));
+    act(() => vi.advanceTimersByTime(HOVER_DELAY_MS));
+    expect(document.querySelector(".map-tooltip")).not.toBeNull();
+    act(() => mapProps.onMoveStart());
+    expect(document.querySelector(".map-tooltip")).toBeNull();
+    expect(mapProps.cursor).toBe("grab");
+    act(() => mapProps.onMouseMove(mouseEvent(["osmfr:monaco"])));
+    act(() => vi.advanceTimersByTime(HOVER_DELAY_MS));
+    expect(document.querySelector(".map-tooltip")).toBeNull();
+    act(() => mapProps.onMoveEnd());
+    act(() => mapProps.onMouseMove(mouseEvent(["osmfr:monaco"])));
+    act(() => vi.advanceTimersByTime(HOVER_DELAY_MS));
+    expect(document.querySelector(".map-tooltip")).not.toBeNull();
+  });
+
+  it("has a control to show the user's location", () => {
+    setup();
+    expect(screen.getByTestId("geolocate").dataset.position).toBe("top-right");
   });
 
   it("hides the tooltip while the picker is open", () => {

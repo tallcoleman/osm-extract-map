@@ -90,7 +90,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   │   ├── App.tsx           # loading/error states, then sidebar + map
 │   │   ├── maplibre-worker.ts  # points MapLibre at its worker file (see phase 3 results)
 │   │   ├── styles.css        # colour tokens on :root, checked by lib/contrast.test.ts
-│   │   ├── components/       # MapView, ExtractList, SelectionPanel, controls, footer…
+│   │   ├── components/       # MapView, ExtractList, SelectionPanel, Header, controls…
 │   │   ├── lib/              # pure logic: levels, search, selection, badges, safeHref, load…
 │   │   └── test/             # react-map-gl mock, test data, axe helper
 │   └── public/               # config.json (gitignored) in development
@@ -301,16 +301,15 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 
 ### Controls (sidebar on desktop, bottom sheet on mobile)
 
-- **Header:** site name, one-line explanation, and prominent links to https://www.geofabrik.de/ and https://www.openstreetmap.fr/.
+- **Header:** site name, a one-line explanation ending with the GitHub link, and a "Providers:" row linking to https://www.geofabrik.de/ and https://www.openstreetmap.fr/, each with the date we last checked it (the provider's `fetchedAt`, since OSM-FR is refreshed less often; worded "last checked" so it isn't read as how fresh the provider keeps its data), "no data yet" for a provider not loaded, and a warning badge if a provider is `stale` or its boundaries failed to load. These sit at the top because the extract list can be very long; there is no footer.
 - **Provider toggle:** Both / Geofabrik / OSM-FR (default Both). A provider with no data yet is disabled.
-- **Level selector:** Smallest available (default) / Continent / Country / Region / Sub-region, mapping to depth 0–3 (confirmed in phase 2). A legend explains the coarser style.
+- **Level selector:** Smallest available (default) / Continent / Country / Region / Sub-region, mapping to depth 0–3 (confirmed in phase 2). A legend, under its own "Legend" label, explains the coarser style.
 - **Search box:** filters the visible extracts by name.
-- **Extract list:** visible extracts sorted by name or size. This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
+- **Extract list:** visible extracts sorted by name or size, each with its parent regions (e.g. "North America › Canada › Quebec"). This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
 - **Selection panel:**
-  - Selected extracts, each with provider, size, replication badge, a link to the provider page, and copy buttons for `.pbf`, `.poly` and the replication base URL. Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
+  - Selected extracts, each with parent regions, provider, size, replication badge, a link to the provider page, and copy buttons (with a copy icon) for `.pbf`, `.poly` and the replication base URL. Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
   - Total estimated download size, broken down by provider.
   - A "Clear" button.
-- **Footer:** last updated time per provider (each provider's `fetchedAt`, since OSM-FR is refreshed less often), a note for a provider not loaded yet, a stale-data notice if any provider is `stale`, an about/attribution link, and a GitHub link.
 
 ### Map interaction
 
@@ -345,7 +344,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - Multi-stage Dockerfile: a Node stage installs with `npm ci` and builds the Vite app, then copies `dist/` into `nginx:alpine`. The final stage also installs `jq` for the entrypoint.
 - nginx config:
   - The data volume is mounted read-only. `/data/` serves `current/` from it, written as `location /data/ { alias /srv/data/current/; }` with a trailing slash on both. Without both slashes, a request such as `/data../` can reach the parent directory. `autoindex` stays off.
-  - Security headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a Content Security Policy that allows only what MapLibre and MapTiler need, starting from `default-src 'self'; connect-src 'self' https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. MapLibre 6 loads its worker as a same-origin module file (`assets/maplibre-gl-worker-<hash>.mjs`), hence `worker-src 'self'`. The "dataviz" style loads its style, tiles, glyphs and sprite from `api.maptiler.com` only (checked in phase 3).
+  - Security headers on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a Content Security Policy that allows only what MapLibre and MapTiler need, starting from `default-src 'self'; connect-src 'self' https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. MapLibre 6 loads its worker as a same-origin module file (`assets/maplibre-gl-worker-<hash>.mjs`), hence `worker-src 'self'`. If a `Permissions-Policy` header is added later, it must allow `geolocation=(self)` for the map's location button. The "dataviz" style loads its style, tiles, glyphs and sprite from `api.maptiler.com` only (checked in phase 3).
   - Hashed app assets: `Cache-Control: public, max-age=31536000, immutable`.
   - `index.html`, `config.json` and `/data/*`: `Cache-Control: no-cache` (revalidate with ETag).
   - `gzip on` for `application/json`, `application/geo+json` and JS/CSS. GeoJSON compresses very well.
@@ -612,8 +611,9 @@ What's in:
 - Map with both providers, level selector (with the coarser fallback dashed and fainter, and a legend), provider toggle, hover tooltip and highlight, click to select, and the overlap picker when a click hits several extracts.
 - Selection panel: total and per-provider estimated sizes (extracts with no known size are counted separately), replication badges, provider page link, and copy buttons for the `.pbf`, `.poly` and replication URLs. Links and copied URLs both go through `safeHref()`.
 - Search (ignores case, accents and punctuation) and an extract list sortable by name or size. Hovering or focusing a row highlights its polygon; activating it selects it and zooms to it.
-- Footer with each provider's `fetchedAt`, stale and missing-provider notices, and a GitHub link. The about link is left for the phase 5 about modal.
-- Below 768px the map sits on top and the sidebar scrolls below it. The bottom sheet is still phase 5.
+- Each provider's `fetchedAt`, stale and missing-provider notices, and a GitHub link, all in the header (first built as a footer, moved up after review because the list pushed it out of sight). The about link is left for the phase 5 about modal.
+- Map controls: zoom buttons and a location button (MapLibre's geolocate control; the position stays in the browser). The hover tooltip measures itself and stays inside the map, and hides while the map pans or zooms, since a touch screen has no cursor to move away afterwards.
+- Below 768px the map takes the top 40% of the screen and stays there while the sidebar scrolls below it. The bottom sheet is still phase 5.
 
 Decisions and findings:
 
@@ -621,6 +621,7 @@ Decisions and findings:
 - **MapLibre's worker in production builds:** MapLibre 6 loads its worker from a file next to its own module, which a Vite build leaves behind, so the built app failed with "Worker failed to load". `web/src/maplibre-worker.ts` imports the worker file with `?url` (Vite copies it into `assets/` with a hash) and calls `setWorkerUrl()`. The CSP needs `worker-src 'self'` (see Deployment).
 - **Lint: oxlint instead of ESLint.** `typescript-eslint` needs TypeScript below 6.1, and this project uses TypeScript 7, which has no JS API. oxlint parses TypeScript itself and has jsx-a11y and React hooks rules; `.oxlintrc.json` turns on the jsx-a11y recommended set. `prefer-tag-over-role` and `control-has-associated-label` are off: the first would swap `role="status"`/`role="dialog"` for elements with different behaviour, and the second can't see text inside child components (the axe tests check names instead).
 - **axe without `vitest-axe`:** that package hasn't changed since early 2025, so the tests call `axe-core` directly. Colour contrast is checked by `web/src/lib/contrast.test.ts` against the tokens in `styles.css` and the basemap's land and water colours. OSM-FR's line colour was darkened from `#d55e00` to `#b84a00` to clear 3:1 against water.
+- **No map labels from our data, but parent regions in the list.** The extract list and selection panel show each extract's parent regions, since there's no map around them to tell apart similar names. The overlap picker doesn't: it opens on the map, where the context is visible.
 - New dev dependencies were pinned to releases at least two weeks old.
 
 ### Phase 4: deployment
