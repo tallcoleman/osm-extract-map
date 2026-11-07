@@ -483,7 +483,7 @@ Run before the first deploy and after major frontend changes:
 - [x] The attribution control shows basemap, OSM and provider credits once each, at desktop and phone widths.
 - [x] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
-- [ ] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
+- [x] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
 - [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
 - [x] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
   (`/data/../` with `curl --path-as-is` returns the site's `index.html`: nginx resolves it to `/`, which is fine.)
@@ -701,10 +701,23 @@ Still to do (needs the owner's accounts):
 
 - [x] Restrict the production MapTiler key to the production origin, and the development key to `localhost`.
 - [x] Deploy to Coolify as a compose project: set `MAPTILER_KEY` (and optionally `CRON_SCHEDULE`), and point the domain at the `web` service on port 80.
-- [ ] Run the release checklist against production (the phone, VoiceOver and real-device performance items haven't been done).
-- [ ] One manual OSM-FR run in production: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (about 1.5 hours).
-  The redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it.
+- [ ] Run the release checklist against production. Everything that can be checked from outside is done (see below); the real phone, VoiceOver and real-device performance items are left.
+- [x] OSM-FR in production, without a new crawl: the local HTTP cache was copied into the updater's cache volume and built with `--providers osmfr --offline` (0 requests, `fetchedAt` kept from the local crawl on 2026-11-06). Cache file names are hashes of the URL, so the files work anywhere. Busybox `tar -k` stops at the first existing file instead of skipping it, so unpack to a temporary directory and `cp -n` from there:
+  `tar -C .cache/http -czf - . | ssh <server> 'docker exec -i <container> sh -c "rm -rf /tmp/cache-import && mkdir /tmp/cache-import && tar -xzf - -C /tmp/cache-import && cp -n /tmp/cache-import/* /cache/ && rm -rf /tmp/cache-import"'`, then `docker exec <container> npm run update-data -- --providers osmfr --offline`. For a later online run: `docker compose exec -d updater sh -c 'npm run update-data -- --providers osmfr > /proc/1/fd/1 2>&1'` (the redirect puts the output in the container logs, where Coolify shows it; a plain `exec -d` discards it).
 - [ ] Confirm the first scheduled run (Monday 03:00 UTC by default) in the updater's logs.
+
+Release checklist against production (2026-11-07, headless Chrome and curl):
+
+- Both providers load at every level (15 / 392 / 1,165 / 1,598 extracts at continent / country / region / smallest), with the coarser fallback dashed and fainter at the region level.
+- Selecting one extract per provider gives the per-provider and total sizes. Provider page links open in a new tab with `noopener noreferrer`, and both return 200. The `.pbf` copy button puts the right URL on the clipboard and reads "Copied".
+- Attribution reads "Geofabrik extracts | OpenStreetMap France extracts | © MapTiler © OpenStreetMap contributors" once each, at 1280 px and at 390 px (compact).
+- Phone emulation (390×844): the map is 40% of the height, the overlap picker docks inside the map, and picking from it selects. On phones MapLibre's compact attribution starts expanded and covers the bottom of the map until the first interaction (phase 5 could start it collapsed).
+- No CSP violations; the only console error is `/favicon.ico` (phase 5). The security headers, cache rules, gzip and MIME types are present on the page, assets, `config.json` and `/data/*`.
+- `/data../`, `/data`, `/data/releases/`, `/data/..%2fupdate.lock`, `/debug.html`, `/src/…`, `/.git/config` and `/package.json` return 404, `/data/` 403. `/data/../` and `/data/%2e%2e/` resolve to `/` and return the site's own `index.html`.
+- The server's bare IP returns 503 from the proxy, so `web` is only reachable through its domain.
+- MapTiler keys: the production key loads the style only with the production origin (example.com, a lookalike suffix domain, localhost and no origin get "Key usage restricted"); the development key works only from localhost. MapTiler also refuses non-browser user agents, so curl needs a browser `User-Agent` and `Sec-Fetch-*` headers for this check.
+- Timings over the network (SwiftShader, so pessimistic): map `load` 4.8 s, first `idle` 5.0 s, JS heap 126 MB with both providers at leaf level.
+- axe in Chrome (which, unlike jsdom, checks contrast) with an extract selected, desktop and phone: one issue, the "Updates" copy button's accessible name ("Copy replication URL for …") didn't contain its visible text. It's now "Copy updates (replication) URL for …"; axe reports no issues after the change.
 
 ### Phase 5: polish
 

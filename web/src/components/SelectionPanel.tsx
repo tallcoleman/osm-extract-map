@@ -26,7 +26,7 @@ function sizeText(t: SizeTotal): string {
 // No .poly button: the boundary files are rarely what people hand to other tools.
 const COPY_URLS = [
   ["pbf", ".pbf", ".pbf URL"],
-  ["replication", "Updates", "replication URL"],
+  ["replication", "Updates", "updates (replication) URL"],
 ] as const;
 
 export function SelectionPanel({ extracts, parents, onRemove, onClear, onZoom }: Props) {
