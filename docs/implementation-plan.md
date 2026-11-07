@@ -484,10 +484,10 @@ Run before the first deploy and after major frontend changes:
 - [x] Phone check (real device or emulation): bottom sheet, tapping polygons, overlap picker.
 - [ ] Quick screen reader pass (VoiceOver) through the main flow.
 - [x] Performance is still acceptable with both providers at leaf level, including on a real phone (phase 3 only measured headless Chrome with software rendering).
-- [ ] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
+- [x] No CSP violations in the browser console, and the security headers are present (check with `curl -I`).
 - [x] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
   (`/data/../` with `curl --path-as-is` returns the site's `index.html`: nginx resolves it to `/`, which is fine.)
-- [ ] `web` isn't reachable on the host's public IP, only through the proxy.
+- [x] `web` isn't reachable on the host's public IP, only through the proxy.
 - [x] The production MapTiler key is restricted to the production origin.
 - [x] `/debug.html` returns 404 in production (the debug map is dev only).
 

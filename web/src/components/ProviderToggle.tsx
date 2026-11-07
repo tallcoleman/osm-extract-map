@@ -10,7 +10,9 @@ interface Props {
 export function ProviderToggle({ value, available, onChange }: Props) {
   return (
     <fieldset className="segmented">
-      <legend>Providers</legend>
+      <legend>
+        <h2>Providers</h2>
+      </legend>
       {PROVIDER_CHOICES.map((c) => {
         const disabled = c !== "both" && !available.includes(c);
         return (

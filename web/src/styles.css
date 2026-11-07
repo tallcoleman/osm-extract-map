@@ -220,6 +220,12 @@ legend {
   padding: 0;
 }
 
+/* Headings inside legends, so heading navigation reaches each control group. */
+legend h2 {
+  font: inherit;
+  margin: 0;
+}
+
 /* Provider toggle: a row of segments built from radio buttons. */
 .segmented {
   display: flex;
@@ -304,6 +310,7 @@ legend {
 }
 
 .legend-title {
+  font-size: inherit;
   font-weight: 600;
   margin: 0 0 0.35rem;
 }

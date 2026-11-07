@@ -52,10 +52,16 @@ describe("LevelSelector", () => {
     expect(onChange).toHaveBeenCalledWith(2);
     rerender(<LevelSelector value={2} onChange={onChange} />);
     expect(screen.getByRole("radio", { name: "Region" })).toHaveProperty("checked", true);
-    expect(screen.getByRole("list", { name: "Legend" }).textContent).toContain("Coarser: nothing at this level here");
-    expect(screen.queryByText("No extract shown at this level")).toBeNull();
+    expect(screen.getByRole("group", { name: "Level" })).toBeTruthy();
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual(["Level", "Legend"]);
+    // The line samples are hidden from screen readers, so each item says in words what it looks like.
+    const legend = () => Array.from(screen.getByRole("list", { name: "Legend" }).children, (li) => li.textContent);
+    expect(legend()).toEqual([
+      "Solid line: Extract at this level",
+      "Faded dashed line: Coarser: nothing at this level here, so the provider's smallest larger extract is shown",
+    ]);
     rerender(<LevelSelector value={2} onChange={onChange} showGaps />);
-    expect(screen.getByText("No extract shown at this level")).toBeTruthy();
+    expect(legend()[2]).toBe("Hatched area: No extract shown at this level");
     await expectNoAxeViolations(container);
   });
 });
