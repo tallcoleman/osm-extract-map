@@ -2,7 +2,9 @@
 //
 // Providers that weren't requested are copied from the previous release
 // unchanged. A requested provider that fails to fetch reuses its previous data,
-// marked "stale". A validation failure publishes nothing.
+// marked "stale". A validation failure publishes nothing. Coverage gaps are
+// recomputed from the final boundaries; if that fails the release goes out
+// without them.
 
 import { mkdir, open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +13,7 @@ import {
   boundariesFile,
   type Extract,
   EXTRACTS_FILE,
+  GAPS_FILE,
   META_FILE,
   type Meta,
   PROVIDER_IDS,
@@ -19,6 +22,7 @@ import {
   type ProviderMeta,
   SCHEMA_VERSION,
 } from "../shared/schema.ts";
+import { computeGaps, type MultiPolygon } from "./gaps.ts";
 import type { Logger } from "./http.ts";
 import { computeLevels, LevelError, type LevelOverrides, NO_OVERRIDES, overridesFor } from "./levels.ts";
 import type { ProviderData } from "./providers/types.ts";
@@ -33,6 +37,8 @@ export interface RunDeps {
   providers: readonly ProviderId[];
   fetchers: Partial<Record<ProviderId, Fetcher>>;
   levelOverrides?: LevelOverrides;
+  /** Land polygons for the coverage gaps; no gaps file is written without them. */
+  land?: MultiPolygon;
   now?: () => Date;
   logger: Logger;
 }
@@ -184,6 +190,18 @@ export async function runUpdate(deps: RunDeps): Promise<RunResult> {
       return { published: false, releaseDir: null, meta: null, reason };
     }
 
+    let gapsText: string | null = null;
+    if (deps.land) {
+      const started = Date.now();
+      try {
+        const parsed = Object.fromEntries(Object.entries(boundaries).map(([p, text]) => [p, JSON.parse(text) as BoundaryCollection]));
+        gapsText = JSON.stringify(computeGaps(parsed, deps.land));
+        logger.info(`Coverage gaps computed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+      } catch (error) {
+        logger.warn(`Coverage gaps not computed, publishing without them: ${(error as Error).message}`);
+      }
+    }
+
     const meta: Meta = {
       generatedAt: now().toISOString(),
       schemaVersion: SCHEMA_VERSION,
@@ -191,6 +209,7 @@ export async function runUpdate(deps: RunDeps): Promise<RunResult> {
       files: {
         extracts: EXTRACTS_FILE,
         boundaries: Object.fromEntries(Object.keys(boundaries).map((p) => [p, boundariesFile(p as ProviderId)])),
+        ...(gapsText !== null && { gaps: GAPS_FILE }),
       },
     };
     validateMeta(meta);
@@ -201,6 +220,7 @@ export async function runUpdate(deps: RunDeps): Promise<RunResult> {
       [EXTRACTS_FILE]: JSON.stringify(extracts),
     };
     for (const [p, text] of Object.entries(boundaries)) files[boundariesFile(p as ProviderId)] = text;
+    if (gapsText !== null) files[GAPS_FILE] = gapsText;
 
     const releaseDir = await publishRelease(dataDir, files, now());
     logger.info(`Published ${releaseDir} (${extracts.length} extracts)`);

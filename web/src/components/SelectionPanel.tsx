@@ -23,9 +23,9 @@ function sizeText(t: SizeTotal): string {
   return `about ${formatBytes(t.bytes)}${unknown}`;
 }
 
+// No .poly button: the boundary files are rarely what people hand to other tools.
 const COPY_URLS = [
   ["pbf", ".pbf", ".pbf URL"],
-  ["poly", ".poly", ".poly URL"],
   ["replication", "Updates", "replication URL"],
 ] as const;
 

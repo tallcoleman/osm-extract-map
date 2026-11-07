@@ -20,6 +20,7 @@
     "preview": "vite preview --config web/vite.config.ts"
   },
   "dependencies": {
+    "polyclip-ts": "0.16.8",
     "undici": "^8.12.4"
   },
   "devDependencies": {

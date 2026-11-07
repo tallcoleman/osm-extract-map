@@ -91,6 +91,8 @@ export interface Meta {
   files: {
     extracts: string;
     boundaries: Partial<Record<ProviderId, string>>;
+    /** Land not covered at each level; absent if it couldn't be computed. */
+    gaps?: string;
   };
 }
 
@@ -121,3 +123,24 @@ export interface BoundaryCollection {
 export const EXTRACTS_FILE = "extracts.json";
 export const META_FILE = "meta.json";
 export const boundariesFile = (provider: ProviderId) => `boundaries-${provider}.geojson`;
+export const GAPS_FILE = "gaps.geojson";
+
+/**
+ * Key for a set of providers shown together, in PROVIDER_IDS order:
+ * "geofabrik", "osmfr" or "geofabrik+osmfr".
+ */
+export function providerSetKey(providers: readonly ProviderId[]): string {
+  return PROVIDER_IDS.filter((p) => providers.includes(p)).join("+");
+}
+
+/** Land with no extract drawn, for one set of providers at one level. */
+export interface GapFeature {
+  type: "Feature";
+  properties: { providers: string; level: "smallest" | number };
+  geometry: MultiPolygonGeometry;
+}
+
+export interface GapCollection {
+  type: "FeatureCollection";
+  features: GapFeature[];
+}

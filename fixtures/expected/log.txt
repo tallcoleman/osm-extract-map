@@ -8,4 +8,5 @@ warn: OSM-FR: 1 extracts have no .poly: africa/spain/melilla
 warn: OSM-FR: 1 polygons have no extract: africa/algeria
 info: OSM-FR: 11 extracts
 warn: OpenStreetMap France: bundles in level-overrides.json not found: osmfr:asia/india/dadra_and_nagar_haveli_and_daman_and_diu, osmfr:asia/israel_and_palestine
+info: Coverage gaps computed in <time>
 info: Published <data>/releases/2026-11-06T18-00-00-000Z (21 extracts)

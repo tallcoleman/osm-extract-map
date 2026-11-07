@@ -2,7 +2,8 @@ import { readFile, readlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeLogger, makeTempDir } from "../test/helpers.ts";
-import type { BoundaryCollection, BoundaryGeometry, Extract, Meta, ProviderId } from "../shared/schema.ts";
+import type { BoundaryCollection, BoundaryGeometry, Extract, GapCollection, Meta, ProviderId } from "../shared/schema.ts";
+import type { MultiPolygon } from "./gaps.ts";
 import type { ExtractDraft, ProviderData } from "./providers/types.ts";
 import { acquireLock, type Fetcher, LockError, runUpdate, type RunDeps, STALE_LOCK_MS } from "./run.ts";
 
@@ -107,6 +108,26 @@ describe("runUpdate", () => {
       { key: "osmfr:europe/zug", depth: 1, isLeaf: true, isBundle: false, name: "europe/zug" },
     ]);
     expect(osmfrBoundaries.features[0]!.geometry).toEqual(square);
+  });
+
+  it("writes the coverage gaps when given land polygons", async () => {
+    const land = [[[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]] as MultiPolygon;
+    const d = deps({ providers: ["geofabrik", "osmfr"], land, fetchers: { geofabrik: ok(geofabrik()), osmfr: ok(osmfr()) } });
+    expect((await runUpdate(d)).published).toBe(true);
+    const { meta } = await readRelease();
+    expect(meta.files.gaps).toBe("gaps.geojson");
+    const gaps = JSON.parse(await readFile(path.join(tmp.dir, "current", "gaps.geojson"), "utf8")) as GapCollection;
+    expect(gaps.features).toHaveLength(15);
+    expect(d.logger.find("Coverage gaps")).toEqual([expect.stringMatching(/^info: Coverage gaps computed in \d+\.\ds$/)]);
+  });
+
+  it("publishes without gaps if they can't be computed, and without land writes none", async () => {
+    const d = deps({ land: {} as MultiPolygon, fetchers: { geofabrik: ok(geofabrik()) } });
+    expect((await runUpdate(d)).published).toBe(true);
+    expect((await readRelease()).meta.files.gaps).toBeUndefined();
+    expect(d.logger.find("Coverage gaps")).toEqual([expect.stringMatching(/^warn: Coverage gaps not computed, publishing without them: /)]);
+    await runUpdate(deps({ fetchers: { geofabrik: ok(geofabrik()) } }));
+    expect((await readRelease()).meta.files.gaps).toBeUndefined();
   });
 
   it("applies level overrides for each provider", async () => {

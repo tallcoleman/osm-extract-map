@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import { type Extract, PROVIDER_IDS } from "../../shared/schema.ts";
+import { type Extract, type GapCollection, type Meta, PROVIDER_IDS } from "../../shared/schema.ts";
 import { ExtractList } from "./components/ExtractList.tsx";
 import { Header } from "./components/Header.tsx";
 import { LevelSelector } from "./components/LevelSelector.tsx";
@@ -8,7 +8,7 @@ import { ProviderToggle } from "./components/ProviderToggle.tsx";
 import { SelectionPanel } from "./components/SelectionPanel.tsx";
 import { bboxIndex } from "./lib/geo.ts";
 import type { Level } from "./lib/levels.ts";
-import { type AppData, loadData as defaultLoadData, loadStyleUrl as defaultLoadStyleUrl } from "./lib/load.ts";
+import { type AppData, loadData as defaultLoadData, loadGaps as defaultLoadGaps, loadStyleUrl as defaultLoadStyleUrl } from "./lib/load.ts";
 import { parentPaths } from "./lib/parents.ts";
 import { type ProviderChoice, visibleProviders } from "./lib/providers.ts";
 import { type SortOrder, visibleExtracts } from "./lib/search.ts";
@@ -17,11 +17,13 @@ import { selectionReducer } from "./lib/selection.ts";
 export interface AppProps {
   loadData?: () => Promise<AppData>;
   loadStyleUrl?: () => Promise<string>;
+  /** Loaded after the data, so the map doesn't wait for it. */
+  loadGaps?: (meta: Meta) => Promise<GapCollection | null>;
 }
 
 type Status = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: AppData };
 
-export function App({ loadData = defaultLoadData, loadStyleUrl = defaultLoadStyleUrl }: AppProps) {
+export function App({ loadData = defaultLoadData, loadStyleUrl = defaultLoadStyleUrl, loadGaps = defaultLoadGaps }: AppProps) {
   const [status, setStatus] = useState<Status>({ state: "loading" });
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
 
@@ -41,7 +43,7 @@ export function App({ loadData = defaultLoadData, loadStyleUrl = defaultLoadStyl
   return (
     <div className="app">
       {status.state === "ready" ? (
-        <Explorer data={status.data} styleUrl={styleUrl} />
+        <Explorer data={status.data} styleUrl={styleUrl} loadGaps={loadGaps} />
       ) : (
         <>
           <aside className="sidebar">
@@ -70,7 +72,13 @@ export function App({ loadData = defaultLoadData, loadStyleUrl = defaultLoadStyl
 }
 
 /** The controls, list and map, once data has loaded. */
-function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }) {
+interface ExplorerProps {
+  data: AppData;
+  styleUrl: string | null;
+  loadGaps: (meta: Meta) => Promise<GapCollection | null>;
+}
+
+function Explorer({ data, styleUrl, loadGaps }: ExplorerProps) {
   const [choice, setChoice] = useState<ProviderChoice>("both");
   const [level, setLevel] = useState<Level>("smallest");
   const [query, setQuery] = useState("");
@@ -78,6 +86,15 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
   const [selected, dispatch] = useReducer(selectionReducer, []);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [zoomTo, setZoomTo] = useState<ZoomRequest | null>(null);
+  const [gaps, setGaps] = useState<GapCollection | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    loadGaps(data.meta).then((g) => current && setGaps(g));
+    return () => {
+      current = false;
+    };
+  }, [data, loadGaps]);
 
   const available = useMemo(() => PROVIDER_IDS.filter((p) => data.boundaries[p]), [data]);
   const providers = useMemo(() => visibleProviders(choice, available), [choice, available]);
@@ -111,7 +128,7 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
       <Header meta={data.meta} failed={data.failed} />
       <section className="panel controls" aria-label="Map options">
         <ProviderToggle value={choice} available={available} onChange={setChoice} />
-        <LevelSelector value={level} onChange={setLevel} />
+        <LevelSelector value={level} onChange={setLevel} showGaps={gaps !== null} />
       </section>
       <SelectionPanel extracts={selectedExtracts} parents={parents} onRemove={remove} onClear={clear} onZoom={zoom} />
       <ExtractList
@@ -137,6 +154,7 @@ function Explorer({ data, styleUrl }: { data: AppData; styleUrl: string | null }
             highlighted={highlighted}
             extractsByKey={byKey}
             zoomTo={zoomTo}
+            gaps={gaps}
             onToggle={toggle}
           />
         ) : (

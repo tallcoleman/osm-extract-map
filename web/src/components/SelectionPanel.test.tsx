@@ -62,7 +62,6 @@ describe("SelectionPanel", () => {
       "Zoom to Nord du Quebec",
       "Remove Nord du Quebec from selection",
       "Copy .pbf URL for Nord du Quebec",
-      "Copy .poly URL for Nord du Quebec",
       "Copy replication URL for Nord du Quebec",
     ]);
     expect(within(items[1] as HTMLElement).getByText(/No change files/)).toBeTruthy();

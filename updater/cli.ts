@@ -9,6 +9,7 @@ import {
   parseRequestInterval,
   USER_AGENT,
 } from "./config.ts";
+import { loadLand } from "./gaps.ts";
 import { createFetchers } from "./providers/index.ts";
 import { LockError, runUpdate } from "./run.ts";
 
@@ -44,6 +45,7 @@ async function main(): Promise<number> {
       providers: args.providers,
       fetchers,
       levelOverrides: config.levelOverrides,
+      land: await loadLand(),
       logger,
     });
     return result.published ? 0 : 1;

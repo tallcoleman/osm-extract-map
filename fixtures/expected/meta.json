@@ -18,6 +18,7 @@
     "boundaries": {
       "geofabrik": "boundaries-geofabrik.geojson",
       "osmfr": "boundaries-osmfr.geojson"
-    }
+    },
+    "gaps": "gaps.geojson"
   }
 }

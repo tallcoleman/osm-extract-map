@@ -11,7 +11,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 | Overlap in size totals | Not specially handled, since only one depth level is shown at a time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Geometry format        | Full-detail GeoJSON, confirmed by the phase 3 performance check. Simplification, then PMTiles, only if real devices show a problem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Change file frequency  | Each provider has an expected default interval (OSM-FR: minutely, Geofabrik: daily, both to be confirmed in phase 0). Extracts are flagged only when they differ from their provider's default or have no change files at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| URLs                   | Provider pages are the primary link. Key URLs (page, `.pbf`, `.poly`, replication base) are shown with copy buttons. The site helps people explore what providers offer; it does not replace their download pages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| URLs                   | Provider pages are the primary link. Key URLs (`.pbf` and replication base) are shown with copy buttons, next to the provider page link. The site helps people explore what providers offer; it does not replace their download pages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | OSM-FR scope           | Everything in `extracts/`, matched with `polygons/` and `replication/`. Pre-merged extracts are excluded via a manual list unless they can be detected from structure. Whether to show them is revisited at the end.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Data schema            | Provider-agnostic, so other providers can be added later.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Update schedule        | Geofabrik is refreshed weekly by the scheduled job. OSM-FR is refreshed only when manually triggered, never on a schedule, since a full refresh takes about 2,600 requests and its robots.txt disallows crawling. Each run carries the providers it doesn't fetch over unchanged from the previous release.                                                                                                                                                                                                                                                                                                                                                                         |
@@ -77,6 +77,8 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 │   ├── replication.ts        # replication status
 │   ├── validate.ts
 │   ├── release.ts            # write release dir, swap symlink, prune
+│   ├── gaps.ts               # land not covered at each level (coverage gaps)
+│   ├── data/                 # ne_50m_land.geojson (Natural Earth, public domain)
 │   ├── explore/              # one-off scripts (phase 0 recon, fixture trimming, phase 2 reports)
 │   └── config/
 │       ├── osmfr-exclude.json     # extra exclusions (merge/ is skipped by path)
@@ -84,7 +86,7 @@ This plan builds on [design.md](design.md) and the decisions made during design 
 ├── web/
 │   ├── vite.config.ts        # dev and preview servers also serve /data/ from data/current
 │   ├── tsconfig.json
-│   ├── debug.html            # phase 2 debug map (dev only)
+│   ├── debug.html            # phase 2 debug map (dev only; not in the production build)
 │   ├── index.html
 │   ├── src/
 │   │   ├── App.tsx           # loading/error states, then sidebar + map
@@ -254,6 +256,17 @@ Each run fetches only the providers it was asked for (see [Running the updater](
 
 If a requested provider fails to fetch, reuse its data from the previous release and mark it `status: "stale"` in `meta.json`. If validation fails, keep the current release, log the reason and exit non-zero.
 
+### Coverage gaps (`updater/gaps.ts`)
+
+The map hatches land where no extract is drawn for the providers and level shown (added after phase 3 review). Computed in the updater on every run, from the final boundaries (fetched and carried over):
+
+- For each provider, and for both together, at each level (15 features in `gaps.geojson`, keyed by `providers`, `"geofabrik"`, `"osmfr"` or `"geofabrik+osmfr"`, and `level`): Natural Earth 1:50m land minus the union of the extracts that level draws, using the same rule as the map (`shared/levels.ts`). Both together is the intersection of the two providers' gaps.
+- Land only, so the oceans outside every extract aren't hatched. The land file is `updater/data/ne_50m_land.geojson` (Natural Earth v5.1.2, public domain, 1.6 MB).
+- Polygon operations use `polyclip-ts` (MIT). Boundaries are snapped to a 0.001° grid (about 100 m) first: OSM-FR's detailed outlines otherwise hit a known robustness bug in the polygon-clipping family. Pieces under 10 km² are dropped; they're mostly slivers where the land and extract outlines differ along coasts.
+- About 35 s per run on the full data; the file is about 2.7 MB (0.8 MB gzipped). If the computation fails, the release goes out without `gaps.geojson` (`meta.files.gaps` is optional) and the map has no hatching.
+- What it showed (2026-11-07): Geofabrik leaves almost no land uncovered at any level (under 0.1%, mostly small islands), and both providers together leave practically none. OSM-FR alone leaves about 28% of land uncovered at "Smallest available" (Antarctica, Greenland, Alaska, most of the US mainland, Libya, Peru, much of Central Asia) and about 8% at "Continent" (mostly Antarctica).
+- Meaning: "nothing drawn at this level", not "no extract at all". Where a bigger extract exists but isn't drawn at the level (e.g. land inside OSM-FR's North America with no US extract), it's hatched too, which matches what the map shows.
+
 ### Release (`updater/release.ts`)
 
 1. Write all files to `releases/<timestamp>/`.
@@ -298,6 +311,7 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 - **Labels:** none (decided in phase 3). Two providers' outlines plus the basemap's own place labels are already busy, and names are in the hover tooltip and the extract list.
 - **Selected outline:** a line layer filtered to the selected keys (`["in", ["get", "key"], ["literal", keys]]`), with no level filter, so a selected extract stays outlined at every level. Its filter changes only on clicks. Drawing every feature there and hiding unselected ones with feature state made panning noticeably slower.
 - **Provider toggle:** hides a provider's layers with `visibility: none` rather than removing its source, so switching is instant and feature state is kept.
+- **Coverage gaps:** a fill layer with a diagonal hatch pattern (`fill-pattern`, built pixel by pixel in `web/src/lib/hatch.ts` and added with `addImage` on load) over `gaps.geojson`, filtered to the feature for the visible providers and level. The file is fetched after the main data so the first render doesn't wait for it, and the legend gets "No extract shown at this level" once it's loaded.
 
 ### Controls (sidebar on desktop, bottom sheet on mobile)
 
@@ -307,7 +321,7 @@ For each provider: a GeoJSON source, a line layer, a fill layer for hover/select
 - **Search box:** filters the visible extracts by name.
 - **Extract list:** visible extracts sorted by name or size, each with its parent regions (e.g. "North America › Canada › Quebec"). This is the keyboard-accessible alternative to clicking on the map. Hovering a row highlights the polygon; clicking zooms to it and toggles selection.
 - **Selection panel:**
-  - Selected extracts, each with parent regions, provider, size, replication badge, a link to the provider page, and copy buttons (with a copy icon) for `.pbf`, `.poly` and the replication base URL. Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
+  - Selected extracts, each with parent regions, provider, size, replication badge, a link to the provider page, and copy buttons (with a copy icon) for `.pbf` and the replication base URL (no `.poly`: boundary files are rarely what people pass to other tools). Every link goes through a `safeHref()` helper that renders a URL only if it is `https:` on an allowlisted provider host, as a second check after updater validation.
   - Total estimated download size, broken down by provider.
   - A "Clear" button.
 
@@ -357,6 +371,7 @@ MapLibre's attribution control collects the `attribution` strings from every loa
 - On start: if `current` doesn't exist, run once immediately (Geofabrik only) so a fresh deploy isn't empty. OSM-FR appears after the first manual OSM-FR run.
 - The data volume and the cache volume are mounted read-write.
 - Runs as the image's non-root `node` user; both volumes are owned by it.
+- The image must include `updater/data/ne_50m_land.geojson` (the coverage gaps need it), and `polyclip-ts` is a runtime dependency.
 
 ### Supply chain and image hardening (both images)
 
@@ -463,6 +478,7 @@ Run before the first deploy and after major frontend changes:
 - [ ] `/data../` and `/data/../` return 404 or 400, not files from outside `current/`.
 - [ ] `web` isn't reachable on the host's public IP, only through the proxy.
 - [ ] The production MapTiler key is restricted to the production origin.
+- [ ] `/debug.html` returns 404 in production (the debug map is dev only).
 
 ### Keeping fixtures honest
 
@@ -609,7 +625,7 @@ Done. `npm run dev` serves the app at `http://localhost:5173/` against `data/cur
 What's in:
 
 - Map with both providers, level selector (with the coarser fallback dashed and fainter, and a legend), provider toggle, hover tooltip and highlight, click to select, and the overlap picker when a click hits several extracts.
-- Selection panel: total and per-provider estimated sizes (extracts with no known size are counted separately), replication badges, provider page link, and copy buttons for the `.pbf`, `.poly` and replication URLs. Links and copied URLs both go through `safeHref()`.
+- Selection panel: total and per-provider estimated sizes (extracts with no known size are counted separately), replication badges, provider page link, and copy buttons for the `.pbf` and replication URLs (the `.poly` button was dropped after review). Links and copied URLs both go through `safeHref()`.
 - Search (ignores case, accents and punctuation) and an extract list sortable by name or size. Hovering or focusing a row highlights its polygon; activating it selects it and zooms to it.
 - Each provider's `fetchedAt`, stale and missing-provider notices, and a GitHub link, all in the header (first built as a footer, moved up after review because the list pushed it out of sight). The about link is left for the phase 5 about modal.
 - Map controls: zoom buttons and a location button (MapLibre's geolocate control; the position stays in the browser). The hover tooltip measures itself and stays inside the map, and hides while the map pans or zooms, since a touch screen has no cursor to move away afterwards.
@@ -629,6 +645,7 @@ Decisions and findings:
 
 - Dockerfiles (with the shared `test` stage, pinned base images, checksum-verified supercronic and a non-root updater), nginx config (with the security headers and CSP), entrypoint, compose (with `expose` and the separate cache volume), first-run behaviour and the manual update command.
 - Restrict the MapTiler keys by origin.
+- Keep the phase 2 debug map (`web/debug.html`, `web/src/debug/`) out of production. `vite build` currently builds only `index.html`, so `web/dist/` has no debug page; keep it that way (don't add `debug.html` to the build inputs or copy it into the image), and check it in the release checklist.
 - Run the release checklist before the first deploy.
 - One full Geofabrik run (including the size pages) from a local `docker compose up`, checking the request log for request counts and pacing. (A local `npm run update-data -- --record --providers geofabrik` already ran once, see the phase 3 results; this repeats it in the container.) Then one manual OSM-FR run in production, since the production cache volume starts empty.
 - Deploy to Coolify as a standard compose project.

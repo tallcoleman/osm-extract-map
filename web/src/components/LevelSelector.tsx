@@ -3,9 +3,11 @@ import { type Level, LEVELS } from "../lib/levels.ts";
 interface Props {
   value: Level;
   onChange: (value: Level) => void;
+  /** Whether the map hatches land with no extract (once the gaps have loaded). */
+  showGaps?: boolean;
 }
 
-export function LevelSelector({ value, onChange }: Props) {
+export function LevelSelector({ value, onChange, showGaps = false }: Props) {
   return (
     <>
       <fieldset className="levels">
@@ -30,6 +32,12 @@ export function LevelSelector({ value, onChange }: Props) {
             <li>
               <span className="legend-line legend-coarser" aria-hidden="true" />
               Coarser: nothing at this level here, so the provider's smallest larger extract is shown
+            </li>
+          )}
+          {showGaps && (
+            <li>
+              <span className="legend-hatch" aria-hidden="true" />
+              No extract shown at this level
             </li>
           )}
         </ul>

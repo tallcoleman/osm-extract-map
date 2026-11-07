@@ -42,6 +42,14 @@ describe("App loading", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("loads the coverage gaps after the data, then hatches and explains them", async () => {
+    const gaps = { type: "FeatureCollection" as const, features: [] };
+    const loadGaps = vi.fn(async () => gaps);
+    render(<App loadData={async () => makeAppData()} loadStyleUrl={async () => STYLE} loadGaps={loadGaps} />);
+    expect(await screen.findByText("No extract shown at this level")).toBeTruthy();
+    expect(loadGaps).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: expect.any(Number) }));
+  });
+
   it("shows a map placeholder until the style URL is known", async () => {
     render(<App loadData={async () => makeAppData()} loadStyleUrl={() => new Promise(() => {})} />);
     await ready();

@@ -53,6 +53,9 @@ describe("LevelSelector", () => {
     rerender(<LevelSelector value={2} onChange={onChange} />);
     expect(screen.getByRole("radio", { name: "Region" })).toHaveProperty("checked", true);
     expect(screen.getByRole("list", { name: "Legend" }).textContent).toContain("Coarser: nothing at this level here");
+    expect(screen.queryByText("No extract shown at this level")).toBeNull();
+    rerender(<LevelSelector value={2} onChange={onChange} showGaps />);
+    expect(screen.getByText("No extract shown at this level")).toBeTruthy();
     await expectNoAxeViolations(container);
   });
 });

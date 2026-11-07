@@ -1,6 +1,7 @@
 import {
   type BoundaryCollection,
   type Extract,
+  type GapCollection,
   type Meta,
   META_FILE,
   PROVIDER_IDS,
@@ -60,6 +61,19 @@ export async function loadData(fetchFn: FetchFn = fetch, base = "/data/"): Promi
   }
   // Extracts with no boundaries can't be drawn, so they're left out of the list too.
   return { meta, extracts: extracts.filter((e) => boundaries[e.provider]), boundaries, failed };
+}
+
+/**
+ * Loads the coverage gaps, if the release has them. Never rejects: without
+ * them the map just has no hatching.
+ */
+export async function loadGaps(meta: Meta, fetchFn: FetchFn = fetch, base = "/data/"): Promise<GapCollection | null> {
+  if (!meta.files.gaps) return null;
+  try {
+    return await getJson<GapCollection>(fetchFn, dataUrl(base, meta.files.gaps));
+  } catch {
+    return null;
+  }
 }
 
 /** Used when config.json has no MapTiler key (development). */

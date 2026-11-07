@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { boundariesFor, EXTRACTS, makeMeta } from "../test/data.ts";
-import { FALLBACK_STYLE, loadData, loadStyleUrl, maptilerStyle } from "./load.ts";
+import { FALLBACK_STYLE, loadData, loadGaps, loadStyleUrl, maptilerStyle } from "./load.ts";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -20,6 +20,24 @@ const routes = () => ({
   "/data/extracts.json": () => json(EXTRACTS),
   "/data/boundaries-geofabrik.geojson": () => json(boundariesFor(geofabrik)),
   "/data/boundaries-osmfr.geojson": () => json(boundariesFor(osmfr)),
+});
+
+describe("loadGaps", () => {
+  const gaps = { type: "FeatureCollection", features: [] };
+  const withGaps = makeMeta({ files: { extracts: "extracts.json", boundaries: {}, gaps: "gaps.geojson" } });
+
+  it("loads the gaps file named in meta.json", async () => {
+    expect(await loadGaps(withGaps, fakeFetch({ "/data/gaps.geojson": () => json(gaps) }))).toEqual(gaps);
+  });
+
+  it("returns null when there is no gaps file or it fails to load", async () => {
+    const fetchFn = fakeFetch({});
+    expect(await loadGaps(makeMeta(), fetchFn)).toBeNull();
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(await loadGaps(withGaps, fetchFn)).toBeNull();
+    const bad = makeMeta({ files: { extracts: "extracts.json", boundaries: {}, gaps: "../gaps.geojson" } });
+    expect(await loadGaps(bad, fetchFn)).toBeNull();
+  });
 });
 
 describe("loadData", () => {

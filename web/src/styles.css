@@ -327,6 +327,15 @@ legend {
   border-top: 2px solid var(--text);
 }
 
+/* Matches the map's hatch pattern (lib/hatch.ts). */
+.legend-hatch {
+  flex: none;
+  width: 28px;
+  height: 14px;
+  border: 1px solid var(--border);
+  background: repeating-linear-gradient(-45deg, rgb(89 97 106 / 60%) 0 1.1px, transparent 1.1px 5.66px);
+}
+
 .legend-coarser {
   border-top-style: dashed;
   opacity: 0.6;

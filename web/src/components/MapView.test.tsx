@@ -1,11 +1,13 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GapCollection } from "../../../shared/schema.ts";
+import { HATCH_IMAGE } from "../lib/hatch.ts";
 import { levelFilters } from "../lib/levels.ts";
 import { PROVIDER_ATTRIBUTION } from "../lib/providers.ts";
 import { EXTRACTS, makeAppData } from "../test/data.ts";
 import { addSource, dropSource, fakeMap, mapProps, resetMapMock } from "../test/map-mock.tsx";
-import { HOVER_DELAY_MS, MapView, type MapViewProps } from "./MapView.tsx";
+import { GAPS_LAYER, HOVER_DELAY_MS, MapView, type MapViewProps } from "./MapView.tsx";
 
 vi.mock("react-map-gl/maplibre", () => import("../test/map-mock.tsx"));
 
@@ -22,6 +24,7 @@ function setup(overrides: Partial<MapViewProps> = {}) {
     highlighted: null,
     extractsByKey: byKey,
     zoomTo: null,
+    gaps: null,
     onToggle: vi.fn(),
     ...overrides,
   };
@@ -246,10 +249,31 @@ describe("MapView pointer", () => {
     expect(document.querySelector(".map-tooltip")).toBeNull();
   });
 
+  it("hatches the gaps for the providers and level shown, once the pattern is registered", () => {
+    const gaps: GapCollection = { type: "FeatureCollection", features: [] };
+    const { update } = setup({ gaps, providers: ["osmfr"], level: 1 });
+    expect(document.querySelector('[data-source="gaps"]')).toBeNull();
+    act(() => mapProps.onLoad());
+    expect(fakeMap.addImage).toHaveBeenCalledWith(HATCH_IMAGE, expect.objectContaining({ width: 16, height: 16 }), { pixelRatio: 2 });
+    expect(JSON.parse(layer(GAPS_LAYER).dataset.paint!)).toEqual({ "fill-pattern": HATCH_IMAGE });
+    expect(filterOf(GAPS_LAYER)).toEqual(["all", ["==", ["get", "providers"], "osmfr"], ["==", ["get", "level"], 1]]);
+    update({ providers: ["geofabrik", "osmfr"], level: "smallest" });
+    expect(filterOf(GAPS_LAYER)).toEqual(["all", ["==", ["get", "providers"], "geofabrik+osmfr"], ["==", ["get", "level"], "smallest"]]);
+    update({ gaps: null });
+    expect(document.querySelector('[data-source="gaps"]')).toBeNull();
+  });
+
+  it("registers the hatch pattern only once", () => {
+    setup();
+    fakeMap.hasImage.mockReturnValue(true);
+    act(() => mapProps.onLoad());
+    expect(fakeMap.addImage).not.toHaveBeenCalled();
+  });
+
   it("records performance marks on load and first idle", () => {
     setup();
     performance.clearMarks();
-    mapProps.onLoad();
+    act(() => mapProps.onLoad());
     mapProps.onIdle();
     mapProps.onIdle();
     expect(performance.getEntriesByName("map-load")).toHaveLength(1);

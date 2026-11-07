@@ -1,8 +1,16 @@
 import type { ExpressionSpecification, MapGeoJSONFeature, MapSourceDataEvent } from "maplibre-gl";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import MapGL, { AttributionControl, GeolocateControl, Layer, type MapLayerMouseEvent, type MapRef, NavigationControl, Popup, Source } from "react-map-gl/maplibre";
-import { type BoundaryCollection, type Extract, PROVIDER_IDS, type ProviderId } from "../../../shared/schema.ts";
+import {
+  type BoundaryCollection,
+  type Extract,
+  type GapCollection,
+  PROVIDER_IDS,
+  type ProviderId,
+  providerSetKey,
+} from "../../../shared/schema.ts";
 import type { BBox } from "../lib/geo.ts";
+import { HATCH_IMAGE, hatchImage } from "../lib/hatch.ts";
 import { type Level, levelFilters } from "../lib/levels.ts";
 import { pickerCandidates } from "../lib/picker.ts";
 import { PROVIDER_ATTRIBUTION, PROVIDER_COLORS, providerOfKey } from "../lib/providers.ts";
@@ -29,6 +37,8 @@ export interface MapViewProps {
   highlighted: string | null;
   extractsByKey: ReadonlyMap<string, Extract>;
   zoomTo: ZoomRequest | null;
+  /** Land with no extract drawn, hatched; null until loaded or if unavailable. */
+  gaps: GapCollection | null;
   onToggle: (key: string) => void;
 }
 
@@ -48,14 +58,23 @@ export function selectedFilter(selected: readonly string[], provider: ProviderId
   return ["in", ["get", "key"], ["literal", selected.filter((k) => providerOfKey(k) === provider)]];
 }
 
+export const GAPS_LAYER = "gaps-hatch";
+
+/** Matches the gap feature for the providers shown at a level. */
+export function gapFilter(providers: readonly ProviderId[], level: Level): ExpressionSpecification {
+  return ["all", ["==", ["get", "providers"], providerSetKey(providers)], ["==", ["get", "level"], level]];
+}
+
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function MapViewImpl(props: MapViewProps) {
-  const { boundaries, providers, level, selected, highlighted, extractsByKey, zoomTo, onToggle } = props;
+  const { boundaries, providers, level, selected, highlighted, extractsByKey, zoomTo, gaps, onToggle } = props;
   const mapRef = useRef<MapRef>(null);
   const [cursorKeys, setCursorKeys] = useState<string[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; width: number; height: number; extracts: Extract[] } | null>(null);
   const [picker, setPicker] = useState<{ longitude: number; latitude: number; extracts: Extract[] } | null>(null);
+  // The gaps layer waits for its pattern image, which can only be added once the style has loaded.
+  const [hatchReady, setHatchReady] = useState(false);
   const hoverTimer = useRef<number | undefined>(undefined);
   // True while the map pans or zooms; hover is paused then.
   const moving = useRef(false);
@@ -172,7 +191,12 @@ function MapViewImpl(props: MapViewProps) {
         onMoveEnd={() => void (moving.current = false)}
         onClick={onClick}
         onSourceData={onSourceData}
-        onLoad={() => performance.mark("map-load")}
+        onLoad={() => {
+          const map = mapRef.current!;
+          if (!map.hasImage(HATCH_IMAGE)) map.addImage(HATCH_IMAGE, hatchImage(), { pixelRatio: 2 });
+          setHatchReady(true);
+          performance.mark("map-load");
+        }}
         onIdle={() => performance.getEntriesByName("map-idle").length || performance.mark("map-idle")}
         cursor={cursorKeys.length ? "pointer" : "grab"}
       >
@@ -180,6 +204,11 @@ function MapViewImpl(props: MapViewProps) {
         {/* Centres the map on the user's location; the position never leaves the browser. */}
         <GeolocateControl position="top-right" fitBoundsOptions={{ maxZoom: 8 }} />
         <AttributionControl position="bottom-right" />
+        {gaps && hatchReady && (
+          <Source id="gaps" type="geojson" data={gaps}>
+            <Layer id={GAPS_LAYER} type="fill" filter={gapFilter(providers, level)} paint={{ "fill-pattern": HATCH_IMAGE }} />
+          </Source>
+        )}
         {loaded.map((p) => {
           const ids = layerIds(p);
           const color = PROVIDER_COLORS[p];

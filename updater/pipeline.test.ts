@@ -2,12 +2,15 @@
 // subset (fixtures/pipeline/) must match fixtures/expected/. After an
 // intended output change, run `npx vitest run updater/pipeline.test.ts -u`
 // and review the diff.
+//
+// The coverage gaps use a small made-up "land" box over Quebec instead of the
+// real land polygons, which would make the golden file huge.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { makeLogger, makeTempDir, serveFixtureSite } from "../test/helpers.ts";
-import type { BoundaryCollection } from "../shared/schema.ts";
+import type { BoundaryCollection, GapCollection } from "../shared/schema.ts";
 import { loadUpdaterConfig, PROVIDER_HOSTS, USER_AGENT } from "./config.ts";
 import { HttpClient } from "./http.ts";
 import { createFetchers } from "./providers/index.ts";
@@ -30,6 +33,12 @@ afterEach(async () => {
 /** One feature per line, so a change to one extract shows up as a one-line diff. */
 function formatBoundaries(text: string): string {
   const fc = JSON.parse(text) as BoundaryCollection;
+  return `{"type":"FeatureCollection","features":[\n${fc.features.map((f) => JSON.stringify(f)).join(",\n")}\n]}\n`;
+}
+
+/** One feature per line, like the boundaries. */
+function formatGaps(text: string): string {
+  const fc = JSON.parse(text) as GapCollection;
   return `{"type":"FeatureCollection","features":[\n${fc.features.map((f) => JSON.stringify(f)).join(",\n")}\n]}\n`;
 }
 
@@ -62,6 +71,7 @@ it("builds the expected release from recorded fixtures", async () => {
     providers: ["geofabrik", "osmfr"],
     fetchers,
     levelOverrides: config.levelOverrides,
+    land: [[[[-80, 44], [-57, 44], [-57, 63], [-80, 63], [-80, 44]]]],
     now: () => BUILT_AT,
     logger,
   });
@@ -75,6 +85,7 @@ it("builds the expected release from recorded fixtures", async () => {
     const name = `boundaries-${p}.geojson`;
     await expect(formatBoundaries(await read(name))).toMatchFileSnapshot(golden(name));
   }
-  const log = logger.lines.map((l) => l.replace(data.dir, "<data>")).join("\n");
+  await expect(formatGaps(await read("gaps.geojson"))).toMatchFileSnapshot(golden("gaps.geojson"));
+  const log = logger.lines.map((l) => l.replace(data.dir, "<data>").replace(/computed in [\d.]+s/, "computed in <time>")).join("\n");
   await expect(`${log}\n`).toMatchFileSnapshot(golden("log.txt"));
 });

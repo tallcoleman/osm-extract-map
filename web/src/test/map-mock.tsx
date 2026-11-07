@@ -13,6 +13,8 @@ export const fakeMap = {
   getSource: vi.fn((id: string) => (sources.has(id) ? {} : undefined)),
   fitBounds: vi.fn<(bounds: unknown, options: { duration?: number }) => void>(),
   getCanvas: () => canvas,
+  hasImage: vi.fn((_id: string) => false),
+  addImage: vi.fn<(id: string, image: unknown, options: { pixelRatio?: number }) => void>(),
 };
 
 // oxlint-disable-next-line typescript/no-explicit-any -- props of the real component
@@ -23,6 +25,8 @@ export function resetMapMock() {
   fakeMap.setFeatureState.mockReset();
   fakeMap.getSource.mockClear();
   fakeMap.fitBounds.mockReset();
+  fakeMap.hasImage.mockReset().mockReturnValue(false);
+  fakeMap.addImage.mockReset();
   mapProps = {};
 }
 
