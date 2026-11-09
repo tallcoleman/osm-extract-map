@@ -153,7 +153,7 @@ describe("App keyboard", () => {
     const { user } = setup();
     await ready();
     const stops: string[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 13; i++) {
       await user.tab();
       const el = document.activeElement as HTMLElement;
       stops.push(el.getAttribute("aria-label") ?? (el.closest("label")?.textContent || el.textContent || el.tagName).trim());
@@ -171,7 +171,8 @@ describe("App keyboard", () => {
       expect.stringContaining("Nord du Quebec"),
       expect.stringContaining("Ontario"),
       expect.stringContaining("Quebec"),
-      // The map canvas comes after the sidebar.
+      // The map comes after the sidebar: its place search, then the canvas.
+      "INPUT",
       "CANVAS",
     ]);
   });

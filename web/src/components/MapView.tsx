@@ -10,6 +10,7 @@ import {
   providerSetKey,
 } from "../../../shared/schema.ts";
 import type { BBox } from "../lib/geo.ts";
+import type { Place } from "../lib/geocode.ts";
 import { HATCH_IMAGE, hatchImage } from "../lib/hatch.ts";
 import { type Level, levelFilters } from "../lib/levels.ts";
 import { NARROW_SCREEN, useMediaQuery } from "../lib/media.ts";
@@ -17,6 +18,7 @@ import { pickerCandidates } from "../lib/picker.ts";
 import { PROVIDER_ATTRIBUTION, PROVIDER_COLORS, providerOfKey } from "../lib/providers.ts";
 import { OverlapPicker } from "./OverlapPicker.tsx";
 import { HoverTooltip } from "./HoverTooltip.tsx";
+import { PlaceSearch } from "./PlaceSearch.tsx";
 
 /** Hover waits until the cursor settles, so sweeping across many areas doesn't queue up redraws. */
 export const HOVER_DELAY_MS = 60;
@@ -67,6 +69,19 @@ export function gapFilter(providers: readonly ProviderId[], level: Level): Expre
 }
 
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Closest zoom for a found place, so a town or address is shown with some context. */
+export const PLACE_ZOOM = 14;
+
+function fitBBox(map: MapRef | null, [w, s, e, n]: BBox, maxZoom: number) {
+  map?.fitBounds(
+    [
+      [w, s],
+      [e, n],
+    ],
+    { padding: 40, maxZoom, duration: reducedMotion() ? 0 : 800 },
+  );
+}
 
 function MapViewImpl(props: MapViewProps) {
   const { boundaries, providers, level, selected, highlighted, extractsByKey, zoomTo, gaps, onToggle } = props;
@@ -122,16 +137,14 @@ function MapViewImpl(props: MapViewProps) {
   );
 
   useEffect(() => {
-    if (!zoomTo) return;
-    const [w, s, e, n] = zoomTo.bbox;
-    mapRef.current?.fitBounds(
-      [
-        [w, s],
-        [e, n],
-      ],
-      { padding: 40, maxZoom: 10, duration: reducedMotion() ? 0 : 800 },
-    );
+    if (zoomTo) fitBBox(mapRef.current, zoomTo.bbox, 10);
   }, [zoomTo]);
+
+  const goToPlace = useCallback((place: Place) => {
+    const map = mapRef.current;
+    if (place.bbox) fitBBox(map, place.bbox, PLACE_ZOOM);
+    else map?.flyTo({ center: place.center, zoom: PLACE_ZOOM, duration: reducedMotion() ? 0 : 800 });
+  }, []);
 
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
@@ -189,6 +202,7 @@ function MapViewImpl(props: MapViewProps) {
 
   return (
     <div className="map-wrap">
+      <PlaceSearch onSelect={goToPlace} />
       <MapGL
         ref={mapRef}
         initialViewState={{ longitude: 10, latitude: 30, zoom: 1.3 }}

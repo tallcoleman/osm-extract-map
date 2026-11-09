@@ -573,6 +573,64 @@ legend h2 {
 
 /* Map overlays */
 
+/* Place search, top left of the map, clear of the zoom and location buttons. */
+.place-search {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  width: min(320px, calc(100% - 66px));
+}
+
+.place-search input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+.place-results {
+  margin-top: 4px;
+  padding: 0.3rem;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+.place-results-closed {
+  display: none;
+}
+
+.place-option {
+  display: flex;
+  flex-direction: column;
+  min-height: 44px;
+  justify-content: center;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.place-option:hover,
+.place-option[aria-selected="true"] {
+  background: var(--accent-bg);
+}
+
+.place-status {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+}
+
+.place-credit {
+  margin: 0;
+  padding: 0.25rem 0.5rem 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
 .map-tooltip {
   position: absolute;
   z-index: 2;
@@ -597,14 +655,15 @@ legend h2 {
 
 /* Phones: the picker docks inside the map instead of a popup at the tap, so it
    always fits. It docks at the top, clear of the zoom and location buttons on
-   the right, or at the bottom when the tap was in the top half. */
+   the right and below the place search, or at the bottom when the tap was in
+   the top half. */
 .picker-panel {
   position: absolute;
   z-index: 2;
-  top: 8px;
+  top: 58px;
   left: 8px;
   right: 52px;
-  max-height: calc(100% - 16px);
+  max-height: calc(100% - 66px);
   display: flex;
   padding: 0.5rem 0.6rem;
   border-radius: 8px;

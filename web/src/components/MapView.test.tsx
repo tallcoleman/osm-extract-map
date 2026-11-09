@@ -7,9 +7,12 @@ import { levelFilters } from "../lib/levels.ts";
 import { PROVIDER_ATTRIBUTION } from "../lib/providers.ts";
 import { EXTRACTS, makeAppData } from "../test/data.ts";
 import { addSource, dropSource, fakeMap, mapProps, resetMapMock } from "../test/map-mock.tsx";
-import { GAPS_LAYER, HOVER_DELAY_MS, MapView, type MapViewProps } from "./MapView.tsx";
+import { GAPS_LAYER, HOVER_DELAY_MS, MapView, type MapViewProps, PLACE_ZOOM } from "./MapView.tsx";
 
 vi.mock("react-map-gl/maplibre", () => import("../test/map-mock.tsx"));
+
+const geocode = vi.hoisted(() => vi.fn());
+vi.mock("../lib/geocode.ts", () => ({ geocode }));
 
 const data = makeAppData();
 const byKey = new Map(EXTRACTS.map((e) => [e.key, e]));
@@ -332,5 +335,30 @@ describe("MapView zoom", () => {
       // @ts-expect-error jsdom has no matchMedia
       delete window.matchMedia;
     }
+  });
+});
+
+describe("MapView place search", () => {
+  it("fits a found area, and flies to a found point", async () => {
+    geocode.mockResolvedValue([
+      { label: "Laval", detail: "Québec, Canada", center: [-73.72, 45.56], bbox: [-73.9, 45.5, -73.5, 45.7] },
+      { label: "Gare de Laval", detail: "France", center: [-0.76, 48.07], bbox: null },
+    ]);
+    const user = userEvent.setup();
+    setup();
+    const input = screen.getByRole("combobox", { name: "Find a place" });
+    await user.type(input, "Laval{Enter}");
+    await user.click(await screen.findByRole("option", { name: /Québec/ }));
+    expect(fakeMap.fitBounds).toHaveBeenCalledWith(
+      [
+        [-73.9, 45.5],
+        [-73.5, 45.7],
+      ],
+      expect.objectContaining({ maxZoom: PLACE_ZOOM }),
+    );
+    await user.clear(input);
+    await user.type(input, "Gare{Enter}");
+    await user.click(await screen.findByRole("option", { name: /Gare de Laval/ }));
+    expect(fakeMap.flyTo).toHaveBeenCalledWith(expect.objectContaining({ center: [-0.76, 48.07], zoom: PLACE_ZOOM }));
   });
 });

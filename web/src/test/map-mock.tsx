@@ -12,6 +12,7 @@ export const fakeMap = {
   setFeatureState: vi.fn<(f: { source: string; id: string }, state: Record<string, boolean>) => void>(),
   getSource: vi.fn((id: string) => (sources.has(id) ? {} : undefined)),
   fitBounds: vi.fn<(bounds: unknown, options: { duration?: number }) => void>(),
+  flyTo: vi.fn<(options: { center: [number, number]; zoom?: number; duration?: number }) => void>(),
   getCanvas: () => canvas,
   hasImage: vi.fn((_id: string) => false),
   addImage: vi.fn<(id: string, image: unknown, options: { pixelRatio?: number }) => void>(),
@@ -25,6 +26,7 @@ export function resetMapMock() {
   fakeMap.setFeatureState.mockReset();
   fakeMap.getSource.mockClear();
   fakeMap.fitBounds.mockReset();
+  fakeMap.flyTo.mockReset();
   fakeMap.hasImage.mockReset().mockReturnValue(false);
   fakeMap.addImage.mockReset();
   mapProps = {};
