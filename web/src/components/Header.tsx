@@ -1,5 +1,6 @@
 import { type Meta, PROVIDER_IDS, PROVIDERS, type ProviderId } from "../../../shared/schema.ts";
 import { formatDate } from "../lib/format.ts";
+import { ExternalLink } from "./ExternalLink.tsx";
 
 export const REPO_URL = "https://github.com/tallcoleman/osm-extract-map";
 
@@ -8,15 +9,6 @@ interface Props {
   meta?: Meta;
   /** Providers whose boundaries failed to load in this browser. */
   failed?: readonly ProviderId[];
-}
-
-function ExternalLink({ href, children }: { href: string; children: string }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {children} <span aria-hidden="true">↗</span>
-      <span className="sr-only">(opens in a new tab)</span>
-    </a>
-  );
 }
 
 function Warning({ children }: { children: string }) {

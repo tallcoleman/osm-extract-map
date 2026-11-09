@@ -29,6 +29,8 @@ Environment variables:
 
 Healthchecks: `web` is healthy while nginx serves the app. `updater` is healthy while the published Geofabrik data is recent and wasn't reused after a failed fetch, so a failing weekly update shows up as unhealthy. OpenStreetMap France isn't checked, since it's updated by hand.
 
+The place search on the map uses Komoot's public [Photon](https://photon.komoot.io/) geocoder straight from the browser (allowed in the Content Security Policy). It's free for fair use only; for heavy traffic, run your own Photon instance and change `PHOTON_URL` in `web/src/lib/geocode.ts` and the CSP in `docker/security-headers.conf`.
+
 `web` isn't published on the host; put a reverse proxy (e.g. Coolify's) in front of port 80. To try it locally, copy `compose.override.example.yaml` to `compose.override.yaml`, run `MAPTILER_KEY=… docker compose up -d --build`, and open http://127.0.0.1:8080/.
 
 On first start the updater fetches Geofabrik straight away. OpenStreetMap France is only fetched by hand:

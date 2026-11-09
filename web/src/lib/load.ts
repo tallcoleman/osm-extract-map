@@ -9,7 +9,7 @@ import {
   SCHEMA_VERSION,
 } from "../../../shared/schema.ts";
 
-export type FetchFn = (url: string) => Promise<Response>;
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface AppData {
   meta: Meta;
